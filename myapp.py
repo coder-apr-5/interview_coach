@@ -1,3 +1,4 @@
+
 from ibm_watsonx_ai.foundation_models import ModelInference
 from ibm_watsonx_ai.foundation_models.schema import TextChatParameters
 from ibm_watsonx_ai import Credentials
