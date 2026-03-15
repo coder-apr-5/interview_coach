@@ -295,10 +295,15 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
 
+    # Define absolute paths for images
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(base_dir, "logo.png").replace("\\", "/")
+    hr_path = os.path.join(base_dir, "hr_guy.png").replace("\\", "/")
+
     # Header with Logo
-    gr.HTML("""
+    gr.HTML(f"""
         <div class="header-logo">
-            <img src="file/logo.png" alt="Logo">
+            <img src="/file={logo_path}" alt="Logo">
             <h1 class="main-title">AI Interview Coach</h1>
         </div>
     """)
@@ -327,7 +332,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
     # HR Character Overlay
     gr.HTML(f"""
         <div id="hr-character">
-            <img src="file/hr_guy.png" alt="Serious HR Guy">
+            <img src="/file={hr_path}" alt="Serious HR Guy">
         </div>
     """)
 
@@ -338,5 +343,6 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(share=True, allowed_paths=["e:/Interview_Coach/interview_coach/"])
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    demo.launch(share=True, allowed_paths=[base_dir])
 
