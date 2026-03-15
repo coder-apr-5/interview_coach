@@ -8,30 +8,53 @@ from faster_whisper import WhisperModel
 import PyPDF2
 
 import gradio as gr
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Global variable tracking is removed. We use gr.State() instead to be state-safe.
 
-project_id="skills-network"
+project_id = "skills-network"
 
-credentials = Credentials(
-                url = "https://us-south.ml.cloud.ibm.com"
-                )
+# Grab API key from environment
+api_key = os.getenv("WATSONX_API_KEY", "")
 
-# Get sample parameter values
-sample_params = TextChatParameters.get_sample_params()
-sample_params['max_tokens'] = int(1e5)
-sample_params['response_format'] = None
+# --- Lazy LLM initialization ---
+# We defer creating the ModelInference object until it is actually needed,
+# so the Gradio UI can still start even without a valid API key.
+llm_base = None
 
-# Initialize the TextChatParameters object with the sample values
-params = TextChatParameters(**sample_params)
+def get_llm():
+    """Lazily initialize the LLM client on first use."""
+    global llm_base
+    if llm_base is not None:
+        return llm_base
 
-# Define LLM
-llm_base = ModelInference(
-    model_id='meta-llama/llama-3-3-70b-instruct',
-    credentials=credentials,
-    project_id=project_id,
-    params=params,
-)
+    current_api_key = os.getenv("WATSONX_API_KEY", api_key)
+    if not current_api_key:
+        raise gr.Error("⚠️ WATSONX_API_KEY is not set. Please create a .env file with your IBM WatsonX API key.")
+
+    credentials = Credentials(
+        url="https://us-south.ml.cloud.ibm.com",
+        api_key=current_api_key
+    )
+
+    # Get sample parameter values
+    sample_params = TextChatParameters.get_sample_params()
+    sample_params['max_tokens'] = int(1e5)
+    sample_params['response_format'] = None
+
+    # Initialize the TextChatParameters object with the sample values
+    params = TextChatParameters(**sample_params)
+
+    llm_base = ModelInference(
+        model_id='meta-llama/llama-3-3-70b-instruct',
+        credentials=credentials,
+        project_id=project_id,
+        params=params,
+    )
+    return llm_base
 
 def Resume_Analyst(resume):
     prompt = f"""
@@ -42,7 +65,7 @@ def Resume_Analyst(resume):
     {resume}
     """
 
-    response = llm_base.chat(
+    response = get_llm().chat(
         messages=[
                 {"role":"system","content":"You are an HR expert in reviewing resumes."},
                 {"role": "user", "content":prompt}
@@ -60,7 +83,7 @@ def Job_Description_Expert(job_description):
     {job_description}
     """
 
-    response = llm_base.chat(
+    response = get_llm().chat(
         messages=[
                 {"role":"system","content":"You are job expert."},
                 {"role": "user", "content":prompt}
@@ -86,7 +109,7 @@ def Interview_Question_Action(chat_histories, resume_summary, job_summary):
     {job_summary}
     """
 
-    response = llm_base.chat(
+    response = get_llm().chat(
         messages=[
                 {"role":"system","content":"You are job expert."},
                 {"role": "user", "content":prompt}
@@ -114,7 +137,7 @@ def Interviewer(resume_summary, job_summary, action=None, last=False):
             {job_summary}
             """
 
-            response = llm_base.chat(
+            response = get_llm().chat(
             messages=[
                     {"role":"system","content":"You are an expert interviewer."},
                     {"role": "user", "content":prompt}
@@ -132,7 +155,7 @@ def Interviewer(resume_summary, job_summary, action=None, last=False):
             {resume_summary}
             """
 
-        response = llm_base.chat(
+        response = get_llm().chat(
         messages=[
                 {"role":"system","content":"You are an expert interviewer."},
                 {"role": "user", "content":prompt}
@@ -155,7 +178,7 @@ def Evaluator(chat_histories, job_summary):
     {job_summary}
     """
 
-    response = llm_base.chat(
+    response = get_llm().chat(
         messages=[
                 {"role":"system","content":"You are an expert to judge the performance of an interviewee."},
                 {"role": "user", "content":prompt}
@@ -196,7 +219,6 @@ def transcribe_audio_faster_whisper(
     device: str = "auto",
     compute_type: str = "auto"
 ) -> str:
-    # ... (function body remains the same as previously defined)
     
     if audio_file_path is None:
         return "Please provide an audio input."
@@ -222,6 +244,12 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     interview_step = interview_step or 0
     latest_question_text = latest_question_text or ""
     
+    # Validate inputs before proceeding
+    if resume_path is None:
+        raise gr.Error("⚠️ Please upload your resume (PDF) before starting the interview.")
+    if not job_str or job_str.strip() == "":
+        raise gr.Error("⚠️ Please paste the job description before starting the interview.")
+
     # Generate resume_summary if it hasn't been done
     if resume_summary is None:
         resume_summary = extract_text_from_pdf(resume_path)
@@ -230,7 +258,7 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     if job_summary is None:
         job_summary = Job_Description_Expert(job_str)
     
-    # Converts the user’s last voice answer into text using the Whisper speech recognition model
+    # Converts the user's last voice answer into text using the Whisper speech recognition model
     try:
         answer_previous = transcribe_audio_faster_whisper(answer_previous)
     except:
@@ -243,7 +271,7 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     if interview_step > 0:
         chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_previous
     
-    # If it’s the first question, it defaults to “Tell me about yourself.”
+    # If it's the first question, it defaults to "Tell me about yourself."
     # Otherwise, the Interview Question Action Agent decides whether to:
     # Ask about another resume topic, or Ask a deeper follow-up question.
     # The Interviewer Agent then formulates the next question naturally.
@@ -284,12 +312,12 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
 
-    gr.Markdown("# Personalized Interview Coach")
+    gr.Markdown("# 🎤 Personalized Interview Coach")
     gr.Markdown('## Upload your pdf resume/CV and copy paste the job description you are applying to:')
     
     # The first row contains two main inputs side-by-side: resume_input and job_desc_input.
     with gr.Row():
-        resume_input = gr.File(label="Upload Resume (PDF)",type='filepath')
+        resume_input = gr.File(label="Upload Resume (PDF)", type='filepath')
         job_desc_input = gr.Textbox(label="Job Description", lines=15)
         
     # Input for the length of the interview
@@ -308,11 +336,11 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         )
         
     # Define the start interview button
-    start_btn = gr.Button("Start Interview", scale=2, min_width=200)
+    start_btn = gr.Button("🚀 Start Interview", scale=2, min_width=200)
     
     # Define the evaluation textbox that shows the final feedback
     gr.Markdown("## Evaluating your performance along the way ...")
-    evaluation_textbox = gr.Textbox(label="Performance Evaluation",lines=20)
+    evaluation_textbox = gr.Textbox(label="Performance Evaluation", lines=20)
     
     # Integrate the next_question() function with the start button
     start_btn.click(

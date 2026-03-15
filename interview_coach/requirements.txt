@@ -4,3 +4,4 @@ faster-whisper
 PyPDF2
 gradio>=4.0.0
 pyarrow
+python-dotenv
