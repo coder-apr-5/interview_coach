@@ -1,5 +1,4 @@
-from google import genai
-from google.genai import errors as genai_errors
+from groq import Groq
 
 from gtts import gTTS
 from faster_whisper import WhisperModel
@@ -13,49 +12,47 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Global variable tracking is removed. We use gr.State() instead to be state-safe.
-
 # --- Lazy LLM initialization ---
 llm_client = None
 
 def get_llm():
-    """Lazily initialize the Gemini client on first use."""
+    """Lazily initialize the Groq client on first use."""
     global llm_client
     if llm_client is not None:
         return llm_client
 
-    api_key = os.getenv("GEMINI_API_KEY", "")
+    api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
-        raise gr.Error("⚠️ GEMINI_API_KEY is not set. Please create a .env file with your Google Gemini API key.")
+        raise gr.Error("⚠️ GROQ_API_KEY is not set. Please add it to your .env file. Get a free key at https://console.groq.com/keys")
 
-    llm_client = genai.Client(api_key=api_key)
+    llm_client = Groq(api_key=api_key)
     return llm_client
 
 def chat_with_llm(system_prompt, user_prompt, max_retries=3):
-    """Send a chat message to Gemini with automatic retry on rate limits."""
+    """Send a chat message to Groq (LLaMA 3.3 70B) with retry on rate limits."""
     client = get_llm()
     
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=user_prompt,
-                config=genai.types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=4096,
-                    temperature=0.7,
-                )
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=4096,
+                temperature=0.7,
             )
-            return response.text
-        except genai_errors.ClientError as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                wait_time = 60 * (attempt + 1)  # 60s, 120s, 180s
+            return response.choices[0].message.content
+        except Exception as e:
+            if "429" in str(e) or "rate" in str(e).lower():
+                wait_time = 30 * (attempt + 1)
                 print(f"⏳ Rate limited. Waiting {wait_time}s before retry ({attempt+1}/{max_retries})...")
                 time.sleep(wait_time)
             else:
-                raise
+                raise gr.Error(f"⚠️ LLM Error: {str(e)}")
     
-    raise gr.Error("⚠️ Gemini API rate limit exceeded after multiple retries. Please wait a minute and try again.")
+    raise gr.Error("⚠️ Rate limit exceeded after retries. Please wait a moment and try again.")
 
 def Resume_Analyst(resume):
     prompt = f"""
@@ -142,7 +139,6 @@ def Evaluator(chat_histories, job_summary):
 
 # Function to read the pdf file (for resume)
 def extract_text_from_pdf(pdf_file_path):
-    # Depending on Gradio version, pdf_file_path can be a string or a file-like object
     file_path_str = pdf_file_path if isinstance(pdf_file_path, str) else pdf_file_path.name
     reader = PyPDF2.PdfReader(file_path_str)
     text = ""
@@ -185,12 +181,11 @@ def transcribe_audio_faster_whisper(
         return f"❌ An error occurred during transcription: {e}"
 
 def next_question(resume_path, job_str, total_number, question_previous, answer_previous, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
-    # Using state variables passed from Gradio
     chat_histories = chat_histories or {}
     interview_step = interview_step or 0
     latest_question_text = latest_question_text or ""
     
-    # Validate inputs before proceeding
+    # Validate inputs
     if resume_path is None:
         raise gr.Error("⚠️ Please upload your resume (PDF) before starting the interview.")
     if not job_str or job_str.strip() == "":
@@ -204,13 +199,13 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     if job_summary is None:
         job_summary = Job_Description_Expert(job_str)
     
-    # Converts the user's last voice answer into text using the Whisper speech recognition model
+    # Transcribe user's audio answer
     try:
         answer_previous = transcribe_audio_faster_whisper(answer_previous)
     except:
         answer_previous = ""
     
-    # Update the interview history after the interview starts.
+    # Update chat history
     if interview_step > 0:
         chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_previous
     
@@ -226,7 +221,7 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     else:
         Question_next = Interviewer(resume_summary, job_summary, action=None, last=True)
     
-    # If the interview ends, evaluate performance
+    # Evaluate if interview ends
     if interview_step >= total_number:
         evaluation = Evaluator(str(chat_histories), job_summary)
         chat_histories = {}
@@ -236,16 +231,15 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     else:
         evaluation = "Evaluation Ongoing ......"
     
-    # Convert the next interview question to audio
+    # Convert question to audio
     question_audio_path = text_to_speech_file(Question_next)
     latest_question_text = Question_next
     interview_step += 1
 
     return gr.update(value=question_audio_path), gr.update(value=None), gr.update(value="Next Question"), gr.update(value=evaluation), chat_histories, interview_step, resume_summary, job_summary, latest_question_text
 
-# gradio ui
+# Gradio UI
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    # State variables
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
@@ -282,6 +276,5 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
     )
 
-# Launch the app
 if __name__ == "__main__":
     demo.launch(share=True)
