@@ -8,6 +8,7 @@ from groq import Groq
 from gtts import gTTS
 from faster_whisper import WhisperModel
 
+import PyPDF2
 import time
 
 import gradio as gr
@@ -203,14 +204,16 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         print("Interview complete. Generating evaluation...")
         eval_data = Evaluator(chat_histories, job_summary)
         radar, bar = create_performance_charts(eval_data['scores'], eval_data['benchmarks'])
-        return None, None, gr.update(value="Interview Ended", interactive=False), eval_data['text_evaluation'], radar, bar, chat_histories, interview_step + 1, resume_summary, job_summary, ""
+        return None, None, gr.update(value="✅ Interview Complete", interactive=False), eval_data['text_evaluation'], radar, bar, chat_histories, interview_step + 1, resume_summary, job_summary, ""
 
     # 3. Generate and speak next question
     print("Generating next question...")
     question = Interviewer(chat_histories, resume_summary, job_summary)
     audio_file = text_to_speech(question)
     
-    return audio_file, None, gr.update(interactive=False), "Evaluation will appear when the interview ends.", None, None, chat_histories, interview_step + 1, resume_summary, job_summary, question
+    button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
+    
+    return audio_file, None, gr.update(value=button_label, interactive=True), "Evaluation will appear when the interview ends.", None, None, chat_histories, interview_step + 1, resume_summary, job_summary, question
 
 def get_image_base64(image_path):
     """Convert an image file to a base64 string for embedding in HTML."""
@@ -322,20 +325,19 @@ custom_css = """
     z-index: 99999;
 }
 #splash-logo {
-    width: 300px;
+    width: 320px;
     height: auto;
     filter: blur(20px);
     opacity: 0;
     animation: blurToFocus 2.5s ease-out forwards, pulseGlow 3s infinite alternate;
 }
 @keyframes blurToFocus {
-    0% { filter: blur(30px); opacity: 0; transform: scale(0.85); }
-    50% { filter: blur(10px); opacity: 0.5; }
+    0% { filter: blur(30px); opacity: 0; transform: scale(0.9); }
     100% { filter: blur(0); opacity: 1; transform: scale(1); }
 }
 @keyframes pulseGlow {
     from { filter: drop-shadow(0 0 10px rgba(0,210,255,0.2)); }
-    to { filter: drop-shadow(0 0 30px rgba(0,210,255,0.6)); }
+    to { filter: drop-shadow(0 0 35px rgba(0,210,255,0.7)); }
 }
 .splash-blur-exit {
     transition: all 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
@@ -343,29 +345,61 @@ custom_css = """
     opacity: 0;
 }
 .splash-title-text {
-    margin-top: 30px;
+    margin-top: 40px;
     color: #fff;
     font-family: 'Inter', sans-serif;
-    letter-spacing: 8px;
+    letter-spacing: 12px;
     text-transform: uppercase;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     opacity: 0;
-    animation: fadeIn 1.5s 1s forwards;
+    animation: fadeIn 1.5s 1.2s forwards;
 }
 @keyframes fadeIn { to { opacity: 0.8; } }
 
-/* Main App Layout */
+/* Main App Layout Fixes */
 #main-app-content {
     display: none;
     opacity: 0;
     transition: opacity 1s ease-in;
+    padding-top: 10px !important; /* Move content even further upwards */
+}
+
+/* Header Spacing */
+.header-container {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.main-title {
+    font-size: 4.2rem;
+    font-weight: 950;
+    background: linear-gradient(135deg, #00d2ff, #92fe9d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -3px;
+    margin: 0;
+}
+
+#sub-title {
+    text-align: center;
+    margin-top: -10px !important;
+    margin-bottom: 50px !important;
+    font-size: 1.4rem;
+    opacity: 0.8;
+}
+
+/* Section Spacing - ENSURING CLEAR GAP */
+.tabs-container {
+    margin-top: 100px !important; /* BIG CLEAR GAP between inputs and results */
+    border-top: 1px solid rgba(0,210,255,0.2);
+    padding-top: 40px;
 }
 
 /* Chatbot & HR Styles */
 #hr-fixed-wrapper {
     position: fixed;
     bottom: 0;
-    right: 30px;
+    right: 40px;
     display: flex;
     align-items: flex-end;
     gap: 15px;
@@ -374,28 +408,28 @@ custom_css = """
 #faq-chatbot {
     display: none;
     flex-direction: column;
-    background: #111;
-    border: 1px solid rgba(0,210,255,0.4);
-    border-radius: 20px;
+    background: rgba(15,15,15,0.98);
+    border: 1px solid rgba(0,210,255,0.3);
+    border-radius: 25px;
     width: 320px;
-    padding: 20px;
-    margin-bottom: 100px;
-    box-shadow: 0 15px 50px rgba(0,0,0,0.9);
-    backdrop-filter: blur(10px);
+    padding: 25px;
+    margin-bottom: 110px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+    backdrop-filter: blur(15px);
 }
 .chat-title {
     color: #00d2ff;
     font-weight: 900;
-    margin-bottom: 15px;
-    font-size: 1.2rem;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
 }
 .faq-btn {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
     color: #fff;
-    padding: 12px;
+    padding: 14px;
     border-radius: 12px;
-    margin-bottom: 10px;
+     margin-bottom: 12px;
     font-size: 0.95rem;
     text-align: left;
     cursor: pointer;
@@ -404,62 +438,48 @@ custom_css = """
 .faq-btn:hover {
     background: #00d2ff;
     color: #000;
-    transform: translateX(5px);
+    transform: translateX(8px);
+    font-weight: bold;
 }
 #faq-answer-display {
     margin-top: 15px;
-    font-size: 0.9rem;
-    color: #ddd;
+    font-size: 0.95rem;
+    color: #eee;
     background: rgba(0,210,255,0.1);
-    padding: 15px;
-    border-radius: 12px;
+    padding: 18px;
+    border-radius: 15px;
     opacity: 0;
-    border-left: 5px solid #00d2ff;
+    border-left: 6px solid #00d2ff;
+    line-height: 1.5;
 }
 #hr-container {
-    width: 240px;
+    width: 230px;
     cursor: pointer;
     position: relative;
 }
 #hr-character {
     width: 100%;
-    filter: drop-shadow(0 0 15px rgba(0,210,255,0.3));
+    filter: drop-shadow(0 0 25px rgba(0,210,255,0.35));
     transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-#hr-character:hover { transform: translateY(-10px); }
+#hr-character:hover { transform: translateY(-12px); }
 #speech-bubble {
     position: absolute;
-    top: -100px;
+    top: -110px;
     right: 15px;
     background: #00d2ff;
     color: #000;
-    padding: 15px 20px;
-    border-radius: 20px;
-    font-size: 14px;
+    padding: 16px 24px;
+    border-radius: 22px;
+    font-size: 15px;
     font-weight: 900;
-    width: 210px;
+    width: 230px;
     text-align: center;
     opacity: 0;
     transition: opacity 0.3s ease;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.6);
 }
-
-/* UI Sharpness */
-.header-logo-container {
-    display: flex;
-    align-items: center;
-    gap: 30px;
-    margin: 50px 0;
-}
-.header-logo-container img { height: 100px; }
-.main-title {
-    font-size: 4rem;
-    font-weight: 900;
-    background: linear-gradient(90deg, #00d2ff, #92fe9d);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -3px;
-}
+.gradio-container { background: #050505 !important; }
 """
 
 with gr.Blocks() as demo:
@@ -486,15 +506,14 @@ with gr.Blocks() as demo:
 
     # 2. Main App Container
     with gr.Column(elem_id="main-app-content"):
-        # Header
+        # Header - Centered Title, No Logo
         gr.HTML(f"""
-            <div class="header-logo-container">
-                <img src="{logo_base64}" alt="Logo">
+            <div class="header-container">
                 <h1 class="main-title">AI Interview Coach</h1>
             </div>
         """)
         
-        gr.Markdown("### 🧔 Elevate Your Career with Next-Gen AI Feedback")
+        gr.Markdown("### 🧔 Elevate Your Career with Next-Gen AI Feedback", elem_id="sub-title")
         
         with gr.Row():
             with gr.Column():
@@ -507,10 +526,11 @@ with gr.Blocks() as demo:
                 interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False)
                 user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
                 
-        with gr.Tabs() as tabs:
-            with gr.Tab("📝 Evaluation"):
+        # Separation for Evaluation and Analytics with explicit class for spacing
+        with gr.Tabs(elem_classes="tabs-container") as tabs:
+            with gr.Tab("📝 Detailed Evaluation"):
                 evaluation_textbox = gr.Textbox(label="HR Feedback & Roadmap", lines=15)
-            with gr.Tab("📊 Analytics"):
+            with gr.Tab("📊 Performance Analytics"):
                 with gr.Row():
                     radar_plot = gr.Plot(label="Skill Competency")
                     bar_plot = gr.Plot(label="Peer Benchmarks")
