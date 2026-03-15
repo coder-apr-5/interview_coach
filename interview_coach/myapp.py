@@ -1,11 +1,11 @@
-from ibm_watsonx_ai.foundation_models import ModelInference
-from ibm_watsonx_ai.foundation_models.schema import TextChatParameters
-from ibm_watsonx_ai import Credentials
+from google import genai
+from google.genai import errors as genai_errors
 
 from gtts import gTTS
 from faster_whisper import WhisperModel
 
 import PyPDF2
+import time
 
 import gradio as gr
 import os
@@ -15,46 +15,47 @@ load_dotenv()
 
 # Global variable tracking is removed. We use gr.State() instead to be state-safe.
 
-project_id = os.getenv("WATSONX_PROJECT_ID", "skills-network")
-
-# Grab API key from environment
-api_key = os.getenv("WATSONX_API_KEY", "")
-
 # --- Lazy LLM initialization ---
-# We defer creating the ModelInference object until it is actually needed,
-# so the Gradio UI can still start even without a valid API key.
-llm_base = None
+llm_client = None
 
 def get_llm():
-    """Lazily initialize the LLM client on first use."""
-    global llm_base
-    if llm_base is not None:
-        return llm_base
+    """Lazily initialize the Gemini client on first use."""
+    global llm_client
+    if llm_client is not None:
+        return llm_client
 
-    current_api_key = os.getenv("WATSONX_API_KEY", api_key)
-    if not current_api_key:
-        raise gr.Error("⚠️ WATSONX_API_KEY is not set. Please create a .env file with your IBM WatsonX API key.")
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise gr.Error("⚠️ GEMINI_API_KEY is not set. Please create a .env file with your Google Gemini API key.")
 
-    credentials = Credentials(
-        url="https://us-south.ml.cloud.ibm.com",
-        api_key=current_api_key
-    )
+    llm_client = genai.Client(api_key=api_key)
+    return llm_client
 
-    # Get sample parameter values
-    sample_params = TextChatParameters.get_sample_params()
-    sample_params['max_tokens'] = int(1e5)
-    sample_params['response_format'] = None
-
-    # Initialize the TextChatParameters object with the sample values
-    params = TextChatParameters(**sample_params)
-
-    llm_base = ModelInference(
-        model_id='meta-llama/llama-3-3-70b-instruct',
-        credentials=credentials,
-        project_id=project_id,
-        params=params,
-    )
-    return llm_base
+def chat_with_llm(system_prompt, user_prompt, max_retries=3):
+    """Send a chat message to Gemini with automatic retry on rate limits."""
+    client = get_llm()
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=user_prompt,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    max_output_tokens=4096,
+                    temperature=0.7,
+                )
+            )
+            return response.text
+        except genai_errors.ClientError as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                wait_time = 60 * (attempt + 1)  # 60s, 120s, 180s
+                print(f"⏳ Rate limited. Waiting {wait_time}s before retry ({attempt+1}/{max_retries})...")
+                time.sleep(wait_time)
+            else:
+                raise
+    
+    raise gr.Error("⚠️ Gemini API rate limit exceeded after multiple retries. Please wait a minute and try again.")
 
 def Resume_Analyst(resume):
     prompt = f"""
@@ -64,15 +65,7 @@ def Resume_Analyst(resume):
     Resume:
     {resume}
     """
-
-    response = get_llm().chat(
-        messages=[
-                {"role":"system","content":"You are an HR expert in reviewing resumes."},
-                {"role": "user", "content":prompt}
-            ]
-        )
-    response_output = response['choices'][0]['message']['content']
-    return response_output
+    return chat_with_llm("You are an HR expert in reviewing resumes.", prompt)
 
 def Job_Description_Expert(job_description):
     prompt = f"""
@@ -82,15 +75,7 @@ def Job_Description_Expert(job_description):
     Job Description:
     {job_description}
     """
-
-    response = get_llm().chat(
-        messages=[
-                {"role":"system","content":"You are job expert."},
-                {"role": "user", "content":prompt}
-            ]
-        )
-    response_output = response['choices'][0]['message']['content']
-    return response_output
+    return chat_with_llm("You are job expert.", prompt)
 
 def Interview_Question_Action(chat_histories, resume_summary, job_summary):
     prompt = f"""
@@ -108,15 +93,7 @@ def Interview_Question_Action(chat_histories, resume_summary, job_summary):
     Job Summary:
     {job_summary}
     """
-
-    response = get_llm().chat(
-        messages=[
-                {"role":"system","content":"You are job expert."},
-                {"role": "user", "content":prompt}
-            ]
-        )
-    response_output = response['choices'][0]['message']['content']
-    return response_output
+    return chat_with_llm("You are job expert.", prompt)
 
 def Interviewer(resume_summary, job_summary, action=None, last=False):
     if not last:
@@ -136,16 +113,9 @@ def Interviewer(resume_summary, job_summary, action=None, last=False):
             Job Summary:
             {job_summary}
             """
-
-            response = get_llm().chat(
-            messages=[
-                    {"role":"system","content":"You are an expert interviewer."},
-                    {"role": "user", "content":prompt}
-                ]
-            )
-            response_output = response['choices'][0]['message']['content']
+            return chat_with_llm("You are an expert interviewer.", prompt)
         else:
-            response_output = "Tell me about yourself."
+            return "Tell me about yourself."
     else:
         prompt = f"""
             The interview ends. Wrap up and express gratitude towards the candidate based on the resume.
@@ -154,16 +124,7 @@ def Interviewer(resume_summary, job_summary, action=None, last=False):
             Resume Summary:
             {resume_summary}
             """
-
-        response = get_llm().chat(
-        messages=[
-                {"role":"system","content":"You are an expert interviewer."},
-                {"role": "user", "content":prompt}
-            ]
-        )
-        response_output = response['choices'][0]['message']['content']
-    
-    return response_output
+        return chat_with_llm("You are an expert interviewer.", prompt)
 
 def Evaluator(chat_histories, job_summary):
     prompt = f"""
@@ -177,15 +138,7 @@ def Evaluator(chat_histories, job_summary):
     Job Summary:
     {job_summary}
     """
-
-    response = get_llm().chat(
-        messages=[
-                {"role":"system","content":"You are an expert to judge the performance of an interviewee."},
-                {"role": "user", "content":prompt}
-            ]
-        )
-    response_output = response['choices'][0]['message']['content']
-    return response_output
+    return chat_with_llm("You are an expert to judge the performance of an interviewee.", prompt)
 
 # Function to read the pdf file (for resume)
 def extract_text_from_pdf(pdf_file_path):
@@ -201,15 +154,9 @@ def extract_text_from_pdf(pdf_file_path):
 
 # Function to generate the audio file
 def text_to_speech_file(text_input):
-    # 1. Generate the audio and save it
     audio_file_path = "temp_voice.mp3"
-    
-    # Using gTTS (as demonstrated earlier) to create the audio file
     tts = gTTS(text=text_input, lang='en')
     tts.save(audio_file_path)
-    
-    # 2. Return the file path
-    # Gradio will automatically display an audio player for this file.
     return audio_file_path
 
 # Function to convert the audio file to text
@@ -232,7 +179,6 @@ def transcribe_audio_faster_whisper(
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
         segments, info = model.transcribe(audio_file_path, beam_size=5)
         full_transcript = [segment.text for segment in segments]
-
         return "".join(full_transcript).strip()
 
     except Exception as e:
@@ -264,17 +210,11 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     except:
         answer_previous = ""
     
-    # Update the interview history after the interview starts. 
-    # The chat history is formatted as a dictionary with keys of interview questions 
-    # and their values of interviewee's answers.
-    # Use latest_question_text instead of question_previous which is just an audio path
+    # Update the interview history after the interview starts.
     if interview_step > 0:
         chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_previous
     
-    # If it's the first question, it defaults to "Tell me about yourself."
-    # Otherwise, the Interview Question Action Agent decides whether to:
-    # Ask about another resume topic, or Ask a deeper follow-up question.
-    # The Interviewer Agent then formulates the next question naturally.
+    # Generate next question
     if interview_step < total_number:
         if interview_step == 0:
             action = None
@@ -286,7 +226,7 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     else:
         Question_next = Interviewer(resume_summary, job_summary, action=None, last=True)
     
-    # If the interview ends, the evaluator will evaluate interviewee's performance.
+    # If the interview ends, evaluate performance
     if interview_step >= total_number:
         evaluation = Evaluator(str(chat_histories), job_summary)
         chat_histories = {}
@@ -296,7 +236,7 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     else:
         evaluation = "Evaluation Ongoing ......"
     
-    # Convert the next interview question to the audio.
+    # Convert the next interview question to audio
     question_audio_path = text_to_speech_file(Question_next)
     latest_question_text = Question_next
     interview_step += 1
@@ -315,34 +255,27 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# 🎤 Personalized Interview Coach")
     gr.Markdown('## Upload your pdf resume/CV and copy paste the job description you are applying to:')
     
-    # The first row contains two main inputs side-by-side: resume_input and job_desc_input.
     with gr.Row():
         resume_input = gr.File(label="Upload Resume (PDF)", type='filepath')
         job_desc_input = gr.Textbox(label="Job Description", lines=15)
         
-    # Input for the length of the interview
     gr.Markdown('## Decide the length of your mock interview (from 1 question to 10 questions):')
     num_q_input = gr.Slider(label="Number of Questions", minimum=1, maximum=10, value=5, step=1)
     
-    # Define the window for interviewer question audio
     gr.Markdown('## Click "Start Interview" below to start the Mock Interview!')
     interviewer_question = gr.Audio(label="Interviewer Question", type="filepath")
     
-    # Define the window for interviewee's audio input
     user_answer = gr.Audio(
-            sources=["microphone"], # Only allows microphone input
-            type="filepath",        # Returns the path to the temporary recorded file
+            sources=["microphone"],
+            type="filepath",
             label="Your turn! Record Your Answer."
         )
         
-    # Define the start interview button
     start_btn = gr.Button("🚀 Start Interview", scale=2, min_width=200)
     
-    # Define the evaluation textbox that shows the final feedback
     gr.Markdown("## Evaluating your performance along the way ...")
     evaluation_textbox = gr.Textbox(label="Performance Evaluation", lines=20)
     
-    # Integrate the next_question() function with the start button
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
