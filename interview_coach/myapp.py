@@ -260,46 +260,198 @@ def get_image_base64(image_path):
         print(f"❌ Error encoding image {image_path}: {e}")
         return ""
 
+custom_js = """
+function initHR() {
+    console.log("Initializing HR Coach interactions...");
+    const container = document.getElementById('hr-character');
+    const bubble = document.getElementById('speech-bubble');
+    const chatbox = document.getElementById('faq-chatbot');
+    
+    if (!container || !bubble) return;
+
+    let greetings = [
+        "Hi, I'm your Personalized Interview Coach",
+        "How can I help you?"
+    ];
+    let currentIdx = 0;
+    let lastHoverTime = 0;
+
+    container.addEventListener('mouseenter', () => {
+        const now = Date.now();
+        if (now - lastHoverTime > 500) {
+            bubble.innerText = greetings[currentIdx];
+            currentIdx = (currentIdx + 1) % greetings.length;
+            bubble.style.opacity = '1';
+            lastHoverTime = now;
+        }
+    });
+
+    container.addEventListener('mouseleave', () => {
+        bubble.style.opacity = '0';
+    });
+
+    container.addEventListener('click', () => {
+        if (chatbox.style.display === "none" || chatbox.style.display === "") {
+            chatbox.style.display = "flex";
+            chatbox.style.animation = "slideIn 0.3s ease-out";
+        } else {
+            chatbox.style.display = "none";
+        }
+    });
+
+    // FAQ Answer Logic
+    window.showAnswer = function(questionId) {
+        const answers = {
+            1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
+            2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
+            3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
+            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown."
+        };
+        const display = document.getElementById('faq-answer-display');
+        display.innerText = answers[questionId];
+        display.style.opacity = '1';
+    };
+}
+
+// Repeatedly try to initialize until elements are found
+const interval = setInterval(() => {
+    if (document.getElementById('hr-character')) {
+        initHR();
+        clearInterval(interval);
+    }
+}, 500);
+"""
+
 custom_css = """
-#hr-character {
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+#hr-fixed-wrapper {
     position: fixed;
-    bottom: -10px;
+    bottom: 0;
     right: 20px;
-    width: 220px;
-    z-index: 1000;
-    transition: all 0.5s ease;
-    filter: drop-shadow(0 0 15px rgba(0,210,255,0.3));
-    pointer-events: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 15px;
+    z-index: 9999;
+}
+#faq-chatbot {
+    display: none;
+    flex-direction: column;
+    background: #1a1a1a;
+    border: 1px solid #00d2ff;
+    border-radius: 15px;
+    width: 280px;
+    padding: 15px;
+    margin-bottom: 80px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+}
+.chat-title {
+    color: #00d2ff;
+    font-weight: 800;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+}
+.faq-btn {
+    background: #222;
+    border: 1px solid #444;
+    color: #eee;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.faq-btn:hover {
+    background: #333;
+    border-color: #00d2ff;
+    color: #00d2ff;
+}
+#faq-answer-display {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #ccc;
+    background: #222;
+    padding: 10px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    border-left: 3px solid #00d2ff;
+}
+#hr-container {
+    width: 200px;
+    cursor: pointer;
+    position: relative;
+}
+#hr-character {
+    width: 100%;
+    transition: transform 0.3s ease;
+    filter: drop-shadow(0 0 15px rgba(0,210,255,0.4));
+}
+#hr-character:hover {
+    transform: translateY(-8px) scale(1.03);
 }
 #hr-character img {
     width: 100%;
     height: auto;
 }
+#speech-bubble {
+    position: absolute;
+    top: -85px;
+    right: 0;
+    background: #00d2ff;
+    color: #000;
+    padding: 10px 15px;
+    border-radius: 15px;
+    font-size: 13px;
+    font-weight: 800;
+    width: 180px;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}
+#speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    right: 30px;
+    border-width: 8px 8px 0;
+    border-style: solid;
+    border-color: #00d2ff transparent;
+}
 .gradio-container {
-    background-color: #0d0d0d !important;
-    color: #e0e0e0 !important;
-    font-family: 'Inter', sans-serif;
+    background-color: #0b0b0b !important;
 }
 .header-logo {
     display: flex;
     align-items: center;
-    gap: 15px;
-    margin-bottom: 20px;
+    gap: 20px;
+    margin-bottom: 30px;
 }
 .header-logo img {
-    height: 60px;
+    height: 75px; 
     width: auto;
+    image-rendering: -webkit-optimize-contrast;
+    filter: drop-shadow(0 0 5px rgba(0,210,255,0.2));
 }
 .main-title {
-    font-size: 2.5rem;
-    font-weight: 800;
-    background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+    font-size: 3rem;
+    font-weight: 950;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #00d2ff, #92fe9d);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 """
 
-with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
+with gr.Blocks() as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
@@ -340,166 +492,34 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
                 radar_plot = gr.Plot(label="Performance Overview")
                 bar_plot = gr.Plot(label="Benchmark Comparison")
 
-    # HR Character Overlay with Speech Bubble and FAQ Modal
+    # HR Character Overlay with Chatbot-style FAQ
     gr.HTML(f"""
-        <div id="hr-container" onmouseover="cycleGreeting()" onclick="openFaq()">
-            <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
-            <div id="hr-character">
-                <img src="{hr_base64}" alt="Serious HR Guy">
+        <div id="hr-fixed-wrapper">
+            <div id="faq-chatbot">
+                <div class="chat-title">🧔 Interview Coach Assistant</div>
+                <button class="faq-btn" onclick="showAnswer(1)">❓ How does it work?</button>
+                <button class="faq-btn" onclick="showAnswer(2)">❓ Which AI model is used?</button>
+                <button class="faq-btn" onclick="showAnswer(3)">❓ is my data secure?</button>
+                <button class="faq-btn" onclick="showAnswer(4)">❓ How to see results?</button>
+                <div id="faq-answer-display">Select a question to see the response.</div>
             </div>
-        </div>
-
-        <!-- FAQ Modal -->
-        <div id="faq-modal" class="modal">
-            <div class="modal-content">
-                <span class="close" onclick="closeFaq()">&times;</span>
-                <h2 style="color: #00d2ff; margin-bottom: 20px;">Frequently Asked Questions</h2>
-                <div class="faq-item">
-                    <p class="faq-q">❓ How does it work?</p>
-                    <p class="faq-a">Our AI analyzes your resume and job description to conduct a personalized mock interview, providing real-time feedback and benchmarks.</p>
-                </div>
-                <div class="faq-item">
-                    <p class="faq-q">❓ Which AI models are used?</p>
-                    <p class="faq-a">We use LLaMA 3.3 70B for the interview logic and Faster-Whisper for high-speed speech-to-text transcription.</p>
-                </div>
-                <div class="faq-item">
-                    <p class="faq-q">❓ Is my data secure?</p>
-                    <p class="faq-a">Yes, your data is processed only during the session. We do not store your resumes or audio recordings on our servers.</p>
-                </div>
-                <div class="faq-item">
-                    <p class="faq-q">❓ How do I see my results?</p>
-                    <p class="faq-a">Once you complete the set number of questions, the 'Analytics' tab will automatically populate with your performance charts.</p>
+            <div id="hr-container">
+                <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
+                <div id="hr-character">
+                    <img src="{hr_base64}" alt="Serious HR Guy">
                 </div>
             </div>
         </div>
-
-        <script>
-            let greetings = [
-                "Hi, I'm your Personalized Interview Coach",
-                "How can I help you?"
-            ];
-            let currentIdx = 0;
-            let lastHoverTime = 0;
-
-            function cycleGreeting() {{
-                const now = Date.now();
-                if (now - lastHoverTime > 1000) {{ // Throttle to prevent rapid flickering
-                    const bubble = document.getElementById('speech-bubble');
-                    bubble.innerText = greetings[currentIdx];
-                    currentIdx = (currentIdx + 1) % greetings.length;
-                    bubble.style.opacity = '1';
-                    lastHoverTime = now;
-                }}
-            }}
-
-            window.addEventListener('mousemove', (e) => {{
-                const container = document.getElementById('hr-container');
-                const bubble = document.getElementById('speech-bubble');
-                if (container && !container.contains(e.target)) {{
-                    bubble.style.opacity = '0';
-                }}
-            }});
-
-            function openFaq() {{
-                document.getElementById('faq-modal').style.display = "block";
-            }}
-
-            function closeFaq() {{
-                document.getElementById('faq-modal').style.display = "none";
-            }}
-
-            window.onclick = function(event) {{
-                let modal = document.getElementById('faq-modal');
-                if (event.target == modal) {{
-                    modal.style.display = "none";
-                }}
-            }}
-        </script>
-
-        <style>
-            #hr-container {{
-                position: fixed;
-                bottom: -10px;
-                right: 20px;
-                width: 220px;
-                z-index: 1000;
-                cursor: pointer;
-            }}
-            #hr-character {{
-                width: 100%;
-                transition: transform 0.3s ease;
-                filter: drop-shadow(0 0 15px rgba(0,210,255,0.3));
-            }}
-            #hr-character:hover {{
-                transform: translateY(-5px) scale(1.02);
-            }}
-            #hr-character img {{
-                width: 100%;
-                height: auto;
-            }}
-            #speech-bubble {{
-                position: absolute;
-                top: -80px;
-                right: 20px;
-                background: #00d2ff;
-                color: #000;
-                padding: 10px 15px;
-                border-radius: 20px;
-                font-size: 14px;
-                font-weight: bold;
-                width: 180px;
-                text-align: center;
-                opacity: 0;
-                transition: opacity 0.3s ease;
-                pointer-events: none;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            }}
-            #speech-bubble::after {{
-                content: '';
-                position: absolute;
-                bottom: -10px;
-                right: 50px;
-                border-width: 10px 10px 0;
-                border-style: solid;
-                border-color: #00d2ff transparent;
-            }}
-
-            /* Modal Styles */
-            .modal {{
-                display: none;
-                position: fixed;
-                z-index: 2000;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0,0,0,0.8);
-                backdrop-filter: blur(5px);
-            }}
-            .modal-content {{
-                background-color: #1a1a1a;
-                margin: 10% auto;
-                padding: 30px;
-                border: 1px solid #333;
-                border-radius: 15px;
-                width: 50%;
-                max-width: 600px;
-                box-shadow: 0 0 30px rgba(0,210,255,0.2);
-                color: white;
-            }}
-            .close {{
-                color: #aaa;
-                float: right;
-                font-size: 28px;
-                font-weight: bold;
-                cursor: pointer;
-            }}
-            .close:hover {{ color: #00d2ff; }}
-            .faq-item {{ margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }}
-            .faq-q {{ font-weight: bold; color: #3a7bd5; margin-bottom: 5px; }}
-            .faq-a {{ font-size: 0.95rem; color: #ccc; }}
-        </style>
     """)
+
+    start_btn.click(
+        fn=next_question,
+        inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
+        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, radar_plot, bar_plot, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+    )
+
+if __name__ == "__main__":
+    demo.launch(share=True, css=custom_css, js=custom_js)
 
     start_btn.click(
         fn=next_question,
