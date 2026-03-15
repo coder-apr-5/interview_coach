@@ -1,0 +1,33 @@
+# Python Environments
+venv/
+.venv/
+env/
+
+# Secrets and Environment Variables
+.env
+.env.local
+
+# Python compiled caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# App specific temporary files (Audio/PDF)
+temp_voice.mp3
+*.wav
+
+# Ignore example data, except the specific tracking files
+# Example files might be large and you might not want to upload candidates' real resumes
+*.pdf
+*.docx
+!example-resume.pdf
+
+# Editor & OS settings
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Any gradio caching / models caching
+gradio_cache/
+.cache

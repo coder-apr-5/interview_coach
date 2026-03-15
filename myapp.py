@@ -9,12 +9,7 @@ import PyPDF2
 
 import gradio as gr
 
-# Global variable of the system: track the chat histories, number of interview questions, 
-# the resume and job summary.
-chat_histories = {}
-interview_step = 0
-resume_summary = None
-job_summary = None
+# Global variable tracking is removed. We use gr.State() instead to be state-safe.
 
 project_id="skills-network"
 
@@ -171,7 +166,9 @@ def Evaluator(chat_histories, job_summary):
 
 # Function to read the pdf file (for resume)
 def extract_text_from_pdf(pdf_file_path):
-    reader = PyPDF2.PdfReader(pdf_file_path.name)
+    # Depending on Gradio version, pdf_file_path can be a string or a file-like object
+    file_path_str = pdf_file_path if isinstance(pdf_file_path, str) else pdf_file_path.name
+    reader = PyPDF2.PdfReader(file_path_str)
     text = ""
     for page in reader.pages:
         page_text = page.extract_text()
@@ -219,9 +216,11 @@ def transcribe_audio_faster_whisper(
     except Exception as e:
         return f"❌ An error occurred during transcription: {e}"
 
-def next_question(resume_path, job_str, total_number, question_previous="", answer_previous=""):
-    # Refer to the global variables defined at the front
-    global chat_histories, interview_step, resume_summary, job_summary
+def next_question(resume_path, job_str, total_number, question_previous, answer_previous, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
+    # Using state variables passed from Gradio
+    chat_histories = chat_histories or {}
+    interview_step = interview_step or 0
+    latest_question_text = latest_question_text or ""
     
     # Generate resume_summary if it hasn't been done
     if resume_summary is None:
@@ -240,8 +239,9 @@ def next_question(resume_path, job_str, total_number, question_previous="", answ
     # Update the interview history after the interview starts. 
     # The chat history is formatted as a dictionary with keys of interview questions 
     # and their values of interviewee's answers.
+    # Use latest_question_text instead of question_previous which is just an audio path
     if interview_step > 0:
-        chat_histories[f"Q{interview_step+1}: {question_previous}"] = answer_previous
+        chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_previous
     
     # If it’s the first question, it defaults to “Tell me about yourself.”
     # Otherwise, the Interview Question Action Agent decides whether to:
@@ -270,12 +270,20 @@ def next_question(resume_path, job_str, total_number, question_previous="", answ
     
     # Convert the next interview question to the audio.
     question_audio_path = text_to_speech_file(Question_next)
+    latest_question_text = Question_next
     interview_step += 1
 
-    return gr.update(value=question_audio_path), gr.update(value=None), gr.update(value="Submit!"), gr.update(value=evaluation)
+    return gr.update(value=question_audio_path), gr.update(value=None), gr.update(value="Next Question"), gr.update(value=evaluation), chat_histories, interview_step, resume_summary, job_summary, latest_question_text
 
 # gradio ui
-with gr.Blocks() as demo:
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    # State variables
+    chat_histories_state = gr.State({})
+    interview_step_state = gr.State(0)
+    resume_summary_state = gr.State(None)
+    job_summary_state = gr.State(None)
+    latest_question_text_state = gr.State("")
+
     gr.Markdown("# Personalized Interview Coach")
     gr.Markdown('## Upload your pdf resume/CV and copy paste the job description you are applying to:')
     
@@ -309,8 +317,8 @@ with gr.Blocks() as demo:
     # Integrate the next_question() function with the start button
     start_btn.click(
         fn=next_question,
-        inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer],
-        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox]
+        inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
+        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
     )
 
 # Launch the app
