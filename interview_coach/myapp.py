@@ -155,35 +155,45 @@ def text_to_speech_file(text_input):
     tts.save(audio_file_path)
     return audio_file_path
 
-# Function to convert the audio file to text
-def transcribe_audio_faster_whisper(
-    audio_file_path: str, 
-    model_size: str = "base", 
-    device: str = "auto",
-    compute_type: str = "auto"
-) -> str:
+# --- Lazy Whisper initialization ---
+whisper_model = None
+
+def get_whisper():
+    """Lazily initialize the Whisper model once."""
+    global whisper_model
+    if whisper_model is not None:
+        return whisper_model
     
+    # Using 'tiny' for speed on CPU/Limited resources
+    print("⏳ Loading Whisper 'tiny' model...")
+    whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+    print("✅ Whisper model loaded.")
+    return whisper_model
+
+# Function to convert the audio file to text
+def transcribe_audio_faster_whisper(audio_file_path: str) -> str:
     if audio_file_path is None:
-        return "Please provide an audio input."
-        
-    if compute_type == "auto":
-        compute_type = "float16" if device == "cuda" else "int8"
-        
-    device = "cpu"
+        return ""
         
     try:
-        model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        model = get_whisper()
+        print(f"🎙️ Transcribing audio: {audio_file_path}...")
         segments, info = model.transcribe(audio_file_path, beam_size=5)
         full_transcript = [segment.text for segment in segments]
-        return "".join(full_transcript).strip()
+        text = "".join(full_transcript).strip()
+        print(f"📝 Transcription: {text}")
+        return text
 
     except Exception as e:
-        return f"❌ An error occurred during transcription: {e}"
+        print(f"❌ Transcription error: {e}")
+        return f"❌ Error: {e}"
 
 def next_question(resume_path, job_str, total_number, question_previous, answer_previous, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
     chat_histories = chat_histories or {}
     interview_step = interview_step or 0
     latest_question_text = latest_question_text or ""
+    
+    print(f"\n--- Processing Interview Step: {interview_step} ---")
     
     # Validate inputs
     if resume_path is None:
@@ -193,24 +203,33 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
 
     # Generate resume_summary if it hasn't been done
     if resume_summary is None:
+        print("📄 Extracting resume text...")
         resume_summary = extract_text_from_pdf(resume_path)
         
     # Generate job_summary if it hasn't been done
     if job_summary is None:
+        print("💼 Summarizing job description...")
         job_summary = Job_Description_Expert(job_str)
     
     # Transcribe user's audio answer
-    try:
-        answer_previous = transcribe_audio_faster_whisper(answer_previous)
-    except:
-        answer_previous = ""
+    if answer_previous:
+        print(f"🔊 Processing audio answer for Q{interview_step}...")
+        try:
+            answer_text = transcribe_audio_faster_whisper(answer_previous)
+        except Exception as e:
+            print(f"❌ Transcription failed: {e}")
+            answer_text = ""
+    else:
+        answer_text = ""
     
     # Update chat history
     if interview_step > 0:
-        chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_previous
+        chat_histories[f"Q{interview_step}: {latest_question_text}"] = answer_text
+        print(f"📊 History updated (Total items: {len(chat_histories)})")
     
     # Generate next question
     if interview_step < total_number:
+        print(f"🤖 Generating question {interview_step + 1}...")
         if interview_step == 0:
             action = None
         else:
@@ -219,10 +238,12 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
         
         Question_next = Interviewer(resume_summary, job_summary, action, last=False)
     else:
+        print("🏁 Interview ending, generating wrap-up...")
         Question_next = Interviewer(resume_summary, job_summary, action=None, last=True)
     
     # Evaluate if interview ends
     if interview_step >= total_number:
+        print("📈 Final evaluation in progress...")
         evaluation = Evaluator(str(chat_histories), job_summary)
         chat_histories = {}
         interview_step = 0
@@ -231,11 +252,13 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
     else:
         evaluation = "Evaluation Ongoing ......"
     
+    print(f"🗣️ Converting next question to speech...")
     # Convert question to audio
     question_audio_path = text_to_speech_file(Question_next)
     latest_question_text = Question_next
     interview_step += 1
 
+    print(f"✅ Step {interview_step} complete.")
     return gr.update(value=question_audio_path), gr.update(value=None), gr.update(value="Next Question"), gr.update(value=evaluation), chat_histories, interview_step, resume_summary, job_summary, latest_question_text
 
 # Gradio UI
