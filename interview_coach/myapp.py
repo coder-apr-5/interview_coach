@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import json
 import re
+import base64
 
 from groq import Groq
 
@@ -249,6 +250,16 @@ def next_question(resume_path, job_str, total_number, question_previous, answer_
         latest_question_text
     )
 
+def get_image_base64(image_path):
+    """Convert an image file to a base64 string for embedding in HTML."""
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+            return f"data:image/png;base64,{encoded_string}"
+    except Exception as e:
+        print(f"❌ Error encoding image {image_path}: {e}")
+        return ""
+
 custom_css = """
 #hr-character {
     position: fixed;
@@ -295,15 +306,15 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
 
-    # Define absolute paths for images
+    # Encode images to base64
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_path = os.path.join(base_dir, "logo.png").replace("\\", "/")
-    hr_path = os.path.join(base_dir, "hr_guy.png").replace("\\", "/")
+    logo_base64 = get_image_base64(os.path.join(base_dir, "logo.png"))
+    hr_base64 = get_image_base64(os.path.join(base_dir, "hr_guy.png"))
 
     # Header with Logo
     gr.HTML(f"""
         <div class="header-logo">
-            <img src="/file={logo_path}" alt="Logo">
+            <img src="{logo_base64}" alt="Logo">
             <h1 class="main-title">AI Interview Coach</h1>
         </div>
     """)
@@ -329,11 +340,165 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
                 radar_plot = gr.Plot(label="Performance Overview")
                 bar_plot = gr.Plot(label="Benchmark Comparison")
 
-    # HR Character Overlay
+    # HR Character Overlay with Speech Bubble and FAQ Modal
     gr.HTML(f"""
-        <div id="hr-character">
-            <img src="/file={hr_path}" alt="Serious HR Guy">
+        <div id="hr-container" onmouseover="cycleGreeting()" onclick="openFaq()">
+            <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
+            <div id="hr-character">
+                <img src="{hr_base64}" alt="Serious HR Guy">
+            </div>
         </div>
+
+        <!-- FAQ Modal -->
+        <div id="faq-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeFaq()">&times;</span>
+                <h2 style="color: #00d2ff; margin-bottom: 20px;">Frequently Asked Questions</h2>
+                <div class="faq-item">
+                    <p class="faq-q">❓ How does it work?</p>
+                    <p class="faq-a">Our AI analyzes your resume and job description to conduct a personalized mock interview, providing real-time feedback and benchmarks.</p>
+                </div>
+                <div class="faq-item">
+                    <p class="faq-q">❓ Which AI models are used?</p>
+                    <p class="faq-a">We use LLaMA 3.3 70B for the interview logic and Faster-Whisper for high-speed speech-to-text transcription.</p>
+                </div>
+                <div class="faq-item">
+                    <p class="faq-q">❓ Is my data secure?</p>
+                    <p class="faq-a">Yes, your data is processed only during the session. We do not store your resumes or audio recordings on our servers.</p>
+                </div>
+                <div class="faq-item">
+                    <p class="faq-q">❓ How do I see my results?</p>
+                    <p class="faq-a">Once you complete the set number of questions, the 'Analytics' tab will automatically populate with your performance charts.</p>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            let greetings = [
+                "Hi, I'm your Personalized Interview Coach",
+                "How can I help you?"
+            ];
+            let currentIdx = 0;
+            let lastHoverTime = 0;
+
+            function cycleGreeting() {{
+                const now = Date.now();
+                if (now - lastHoverTime > 1000) {{ // Throttle to prevent rapid flickering
+                    const bubble = document.getElementById('speech-bubble');
+                    bubble.innerText = greetings[currentIdx];
+                    currentIdx = (currentIdx + 1) % greetings.length;
+                    bubble.style.opacity = '1';
+                    lastHoverTime = now;
+                }}
+            }}
+
+            window.addEventListener('mousemove', (e) => {{
+                const container = document.getElementById('hr-container');
+                const bubble = document.getElementById('speech-bubble');
+                if (container && !container.contains(e.target)) {{
+                    bubble.style.opacity = '0';
+                }}
+            }});
+
+            function openFaq() {{
+                document.getElementById('faq-modal').style.display = "block";
+            }}
+
+            function closeFaq() {{
+                document.getElementById('faq-modal').style.display = "none";
+            }}
+
+            window.onclick = function(event) {{
+                let modal = document.getElementById('faq-modal');
+                if (event.target == modal) {{
+                    modal.style.display = "none";
+                }}
+            }}
+        </script>
+
+        <style>
+            #hr-container {{
+                position: fixed;
+                bottom: -10px;
+                right: 20px;
+                width: 220px;
+                z-index: 1000;
+                cursor: pointer;
+            }}
+            #hr-character {{
+                width: 100%;
+                transition: transform 0.3s ease;
+                filter: drop-shadow(0 0 15px rgba(0,210,255,0.3));
+            }}
+            #hr-character:hover {{
+                transform: translateY(-5px) scale(1.02);
+            }}
+            #hr-character img {{
+                width: 100%;
+                height: auto;
+            }}
+            #speech-bubble {{
+                position: absolute;
+                top: -80px;
+                right: 20px;
+                background: #00d2ff;
+                color: #000;
+                padding: 10px 15px;
+                border-radius: 20px;
+                font-size: 14px;
+                font-weight: bold;
+                width: 180px;
+                text-align: center;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                pointer-events: none;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            }}
+            #speech-bubble::after {{
+                content: '';
+                position: absolute;
+                bottom: -10px;
+                right: 50px;
+                border-width: 10px 10px 0;
+                border-style: solid;
+                border-color: #00d2ff transparent;
+            }}
+
+            /* Modal Styles */
+            .modal {{
+                display: none;
+                position: fixed;
+                z-index: 2000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.8);
+                backdrop-filter: blur(5px);
+            }}
+            .modal-content {{
+                background-color: #1a1a1a;
+                margin: 10% auto;
+                padding: 30px;
+                border: 1px solid #333;
+                border-radius: 15px;
+                width: 50%;
+                max-width: 600px;
+                box-shadow: 0 0 30px rgba(0,210,255,0.2);
+                color: white;
+            }}
+            .close {{
+                color: #aaa;
+                float: right;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+            }}
+            .close:hover {{ color: #00d2ff; }}
+            .faq-item {{ margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }}
+            .faq-q {{ font-weight: bold; color: #3a7bd5; margin-bottom: 5px; }}
+            .faq-a {{ font-size: 0.95rem; color: #ccc; }}
+        </style>
     """)
 
     start_btn.click(
@@ -343,6 +508,5 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css) as demo:
     )
 
 if __name__ == "__main__":
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    demo.launch(share=True, allowed_paths=[base_dir])
+    demo.launch(share=True)
 
