@@ -15,7 +15,7 @@ load_dotenv()
 
 # Global variable tracking is removed. We use gr.State() instead to be state-safe.
 
-project_id = "skills-network"
+project_id = os.getenv("WATSONX_PROJECT_ID", "skills-network")
 
 # Grab API key from environment
 api_key = os.getenv("WATSONX_API_KEY", "")
