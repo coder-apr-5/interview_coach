@@ -182,11 +182,7 @@ def text_to_speech(text):
     tts.save(output_path)
     return output_path
 
-def handle_feedback(name, email, message):
-    if not name or not message:
-        return "⚠️ Please provide at least a name and feedback."
-    print(f"FEEDBACK RECEIVED: From {name} ({email}): {message}")
-    return "✅ Thank you! Your feedback has been sent to the coach."
+    return output_path
 
 # --- Application Flow ---
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
@@ -318,14 +314,41 @@ function initHR() {
     };
 
     window.toggleFeedback = function() {
-        const panel = document.getElementById('feedback-form-gr-logic');
+        const panel = document.getElementById('feedback-panel');
         if (!panel) return;
         if (panel.style.display === "none" || panel.style.display === "") {
-            panel.style.display = "block";
+            panel.style.display = "flex";
         } else {
             panel.style.display = "none";
         }
     };
+
+    // --- Private Logic: Hide Gradio links on Public URL & Make them Vertical ---
+    const checkPublic = () => {
+        const isPublic = window.location.hostname.includes('gradio.live');
+        const gradioFooters = document.querySelectorAll('footer');
+        
+        gradioFooters.forEach(f => {
+            // My custom footer has a long style string, Gradio's doesn't
+            if (f.innerHTML.includes('Gradio') && !f.innerHTML.includes('Apurba Roy')) {
+                if (isPublic) {
+                    f.style.setProperty('display', 'none', 'important');
+                } else {
+                    f.style.setProperty('display', 'flex', 'important');
+                    f.style.setProperty('flex-direction', 'column', 'important');
+                    f.style.setProperty('align-items', 'flex-start', 'important');
+                    f.style.setProperty('gap', '8px', 'important');
+                    f.style.setProperty('margin-top', '20px', 'important');
+                    f.style.setProperty('padding', '20px', 'important');
+                }
+            }
+        });
+    };
+    
+    // Run multiple times because Gradio injects the footer late
+    setTimeout(checkPublic, 1000);
+    setTimeout(checkPublic, 3000);
+    setTimeout(checkPublic, 5000);
 }
 
 const interval = setInterval(() => {
@@ -512,7 +535,19 @@ custom_css = """
 .dark .gr-button-primary { background: linear-gradient(135deg, #00d2ff, #92fe9d) !important; color: #000 !important; border: none !important; }
 .dark .gr-block, .dark .gr-form, .dark .gr-box { background: #111 !important; border: 1px solid #222 !important; }
 .dark .gr-input, .dark .gr-select, .dark .gr-file { background: #1a1a1a !important; color: #fff !important; border: 1px solid #333 !important; }
-.dark footer { display: block !important; padding: 20px; opacity: 0.6; }
+
+/* Custom Footer and Developer Credit */
+.dark footer:not(.custom-app-footer) { opacity: 0.6; }
+.dev-credit { 
+    font-size: 0.85rem; 
+    margin-top: 12px; 
+    opacity: 0.8; 
+    font-weight: 500; 
+    letter-spacing: 1px;
+    background: linear-gradient(135deg, #00d2ff, #92fe9d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
 
 /* Feedback Section Styles */
 #feedback-wrapper {
@@ -537,8 +572,9 @@ custom_css = """
     color: #000;
     box-shadow: 0 0 15px rgba(0,210,255,0.6);
 }
-#feedback-form-gr-logic {
+#feedback-panel {
     display: none;
+    flex-direction: column;
     position: fixed !important;
     top: 95px !important;
     right: 40px !important;
@@ -546,7 +582,7 @@ custom_css = """
     border: 1px solid rgba(0,210,255,0.3) !important;
     border-radius: 20px !important;
     width: 320px !important;
-    padding: 20px !important;
+    padding: 25px !important;
     z-index: 100001 !important;
     box-shadow: 0 10px 40px rgba(0,0,0,0.8);
     backdrop-filter: blur(20px);
@@ -558,17 +594,39 @@ custom_css = """
     font-size: 1.2rem;
     text-align: center;
 }
-#feedback-form-gr-logic label { display: none !important; }
-#feedback-form-gr-logic input, #feedback-form-gr-logic textarea { 
-    background: rgba(255,255,255,0.05) !important; 
+.feedback-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+.feedback-form input, .feedback-form textarea {
+    background: rgba(255,255,255,0.05) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     color: white !important;
+    padding: 12px !important;
+    border-radius: 10px !important;
+    font-size: 0.9rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+.feedback-form button {
+    background: linear-gradient(135deg, #00d2ff, #92fe9d) !important;
+    color: black !important;
+    border: none !important;
+    padding: 12px !important;
+    border-radius: 10px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    transition: transform 0.2s !important;
+}
+.feedback-form button:hover {
+    transform: scale(1.02) !important;
 }
 
 /* Responsive Mobile Fixes */
 @media (max-width: 768px) {
     #feedback-wrapper { top: 20px; right: 20px; }
-    #feedback-form-gr-logic {
+    #feedback-panel {
         right: 20px !important;
         top: 75px !important;
         width: 280px !important;
@@ -629,7 +687,6 @@ custom_css = """
 """
 
 # Encode images
-print("Encoding images...")
 base_dir = os.path.dirname(os.path.abspath(__file__))
 logo_file = os.path.join(base_dir, "logo.png")
 hr_file = os.path.join(base_dir, "hr_guy.png")
@@ -642,36 +699,38 @@ with gr.Blocks() as demo:
     resume_summary_state = gr.State(None)
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
-
-    # 1. Overlay Elements (Splash & Feedback Button)
+    # 1. Overlay Elements (Splash Screen ONLY)
     gr.HTML(f"""
         <div id="splash-screen">
             <img id="splash-logo" src="{logo_base64}" alt="AI Coaching">
             <div class="splash-title-text">Preparing Your Session</div>
         </div>
-        
-        <div id="feedback-wrapper">
-            <button id="feedback-btn" onclick="toggleFeedback()">💬 Feedback</button>
-        </div>
     """)
 
     # 2. Main App Container
     with gr.Column(elem_id="main-app-content"):
+        # Feedback Section (Moved inside to only show with main app)
+        gr.HTML(f"""
+            <div id="feedback-wrapper">
+                <button id="feedback-btn" onclick="toggleFeedback()">💬 Feedback</button>
+                <div id="feedback-panel">
+                    <div class="feedback-title">Share Your Thoughts</div>
+                    <form class="feedback-form" action="https://formspree.io/f/xreyyoqg" method="POST">
+                        <input type="text" name="name" placeholder="Your Name" required>
+                        <input type="email" name="email" placeholder="Your Email" required>
+                        <textarea name="feedback" placeholder="Your Feedback..." rows="4" required></textarea>
+                        <button type="submit">Send Message</button>
+                    </form>
+                </div>
+            </div>
+        """)
+        
         # Header Section
         gr.HTML(f"""
             <div class="header-container">
                 <h1 class="main-title">AI Interview Coach</h1>
             </div>
         """)
-        
-        # Feedback Form Section (Floating via CSS)
-        with gr.Column(elem_id="feedback-form-gr-logic"):
-            gr.HTML('<div class="feedback-title">Share Your Thoughts</div>')
-            fb_name = gr.Textbox(placeholder="Name")
-            fb_email = gr.Textbox(placeholder="Email (optional)")
-            fb_msg = gr.Textbox(placeholder="Your feedback...", lines=3)
-            fb_send = gr.Button("Send Message", variant="primary")
-            fb_status = gr.Markdown("")
         
         gr.Markdown("### 🧔 Elevate Your Career with Next-Gen AI Feedback", elem_id="sub-title")
         
@@ -720,16 +779,11 @@ with gr.Blocks() as demo:
 
     # 4. Custom Footer
     gr.HTML("""
-        <footer style="text-align: center; padding: 40px 20px; border-top: 1px solid rgba(0,210,255,0.1); margin-top: 60px; color: rgba(255,255,255,0.5);">
+        <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; border-top: 1px solid rgba(0,210,255,0.1); margin-top: 60px; color: rgba(255,255,255,0.5);">
             <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
+            <div class="dev-credit">Developed by Apurba Roy</div>
         </footer>
     """)
-
-    fb_send.click(
-        fn=handle_feedback,
-        inputs=[fb_name, fb_email, fb_msg],
-        outputs=fb_status
-    )
 
     start_btn.click(
         fn=next_question,
@@ -738,5 +792,4 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
-    print("Launching demo...")
     demo.launch(share=True, theme=gr.themes.Soft(), css=custom_css, js=custom_js)
