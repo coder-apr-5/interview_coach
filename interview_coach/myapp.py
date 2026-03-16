@@ -318,10 +318,45 @@ function initHR() {
         if (!panel) return;
         if (panel.style.display === "none" || panel.style.display === "") {
             panel.style.display = "flex";
+            initFeedbackAjax(); // Ensure listener is attached
         } else {
             panel.style.display = "none";
         }
     };
+
+    function initFeedbackAjax() {
+        const form = document.getElementById('feedback-form-element');
+        const status = document.getElementById('feedback-status');
+        if (!form || form.dataset.listenerAttached) return;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            status.innerText = "Sending...";
+            status.style.color = "#00d2ff";
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (response.ok) {
+                    status.innerText = "✅ Message Sent Successfully!";
+                    status.style.color = "#92fe9d";
+                    form.reset();
+                    setTimeout(() => { status.innerText = ""; }, 5000);
+                } else {
+                    status.innerText = "❌ Sending failed. Try again.";
+                    status.style.color = "#ff4b4b";
+                }
+            } catch (error) {
+                status.innerText = "❌ Connection error.";
+                status.style.color = "#ff4b4b";
+            }
+        });
+        form.dataset.listenerAttached = "true";
+    }
 
     // --- Private Logic: Hide Gradio links on Public URL & Make them Vertical ---
     const checkPublic = () => {
@@ -548,6 +583,29 @@ custom_css = """
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
+.social-links {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+}
+.social-links a {
+    color: rgba(255,255,255,0.6);
+    text-decoration: none;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.social-links a:hover {
+    color: #00d2ff;
+    transform: translateY(-3px);
+    text-shadow: 0 0 10px rgba(0,210,255,0.4);
+}
+.social-icon {
+    font-size: 1.4rem;
+}
 
 /* Feedback Section Styles */
 #feedback-wrapper {
@@ -715,12 +773,13 @@ with gr.Blocks() as demo:
                 <button id="feedback-btn" onclick="toggleFeedback()">💬 Feedback</button>
                 <div id="feedback-panel">
                     <div class="feedback-title">Share Your Thoughts</div>
-                    <form class="feedback-form" action="https://formspree.io/f/xreyyoqg" method="POST">
+                    <form id="feedback-form-element" class="feedback-form" action="https://formspree.io/f/xreyyoqg" method="POST">
                         <input type="text" name="name" placeholder="Your Name" required>
                         <input type="email" name="email" placeholder="Your Email" required>
                         <textarea name="feedback" placeholder="Your Feedback..." rows="4" required></textarea>
                         <button type="submit">Send Message</button>
                     </form>
+                    <div id="feedback-status" style="margin-top: 15px; font-weight: 600; text-align: center; min-height: 20px;"></div>
                 </div>
             </div>
         """)
@@ -782,6 +841,17 @@ with gr.Blocks() as demo:
         <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; border-top: 1px solid rgba(0,210,255,0.1); margin-top: 60px; color: rgba(255,255,255,0.5);">
             <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
             <div class="dev-credit">Developed by Apurba Roy</div>
+            <div class="social-links">
+                <a href="https://linkedin.com/in/apurba-roy-dev" target="_blank" title="LinkedIn">
+                    <span class="social-icon">🔗</span> LinkedIn
+                </a>
+                <a href="https://github.com/ApurbaRoy74" target="_blank" title="GitHub">
+                    <span class="social-icon">💻</span> GitHub
+                </a>
+                <a href="mailto:apurbaroy.dev@gmail.com" title="Email">
+                    <span class="social-icon">✉️</span> Mail
+                </a>
+            </div>
         </footer>
     """)
 
