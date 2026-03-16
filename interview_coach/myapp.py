@@ -629,6 +629,7 @@ custom_css = """
 """
 
 # Encode images
+print("Encoding images...")
 base_dir = os.path.dirname(os.path.abspath(__file__))
 logo_file = os.path.join(base_dir, "logo.png")
 hr_file = os.path.join(base_dir, "hr_guy.png")
@@ -737,4 +738,5 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
+    print("Launching demo...")
     demo.launch(share=True, theme=gr.themes.Soft(), css=custom_css, js=custom_js)
