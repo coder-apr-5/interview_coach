@@ -182,6 +182,12 @@ def text_to_speech(text):
     tts.save(output_path)
     return output_path
 
+def handle_feedback(name, email, message):
+    if not name or not message:
+        return "⚠️ Please provide at least a name and feedback."
+    print(f"FEEDBACK RECEIVED: From {name} ({email}): {message}")
+    return "✅ Thank you! Your feedback has been sent to the coach."
+
 # --- Application Flow ---
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
     print(f"\n--- STEP {interview_step + 1} / {num_q} ---")
@@ -231,6 +237,9 @@ def get_image_base64(image_path):
 custom_js = """
 function initApp() {
     console.log("Initializing Premium AI Interview Coach Experience...");
+    
+    // Force Dark Mode immediately
+    document.body.classList.add('dark');
     
     const splash = document.getElementById('splash-screen');
     const mainApp = document.getElementById('main-app-content');
@@ -306,6 +315,16 @@ function initHR() {
         const display = document.getElementById('faq-answer-display');
         display.innerText = answers[questionId];
         display.style.opacity = '1';
+    };
+
+    window.toggleFeedback = function() {
+        const panel = document.getElementById('feedback-form-gr-logic');
+        if (!panel) return;
+        if (panel.style.display === "none" || panel.style.display === "") {
+            panel.style.display = "block";
+        } else {
+            panel.style.display = "none";
+        }
     };
 }
 
@@ -489,10 +508,71 @@ custom_css = """
     transition: opacity 0.3s ease;
     box-shadow: 0 15px 30px rgba(0,0,0,0.6);
 }
-.gradio-container { background: #050505 !important; }
+.gradio-container { background: #050505 !important; border: none !important; }
+.dark .gr-button-primary { background: linear-gradient(135deg, #00d2ff, #92fe9d) !important; color: #000 !important; border: none !important; }
+.dark .gr-block, .dark .gr-form, .dark .gr-box { background: #111 !important; border: 1px solid #222 !important; }
+.dark .gr-input, .dark .gr-select, .dark .gr-file { background: #1a1a1a !important; color: #fff !important; border: 1px solid #333 !important; }
+.dark footer { display: block !important; padding: 20px; opacity: 0.6; }
+
+/* Feedback Section Styles */
+#feedback-wrapper {
+    position: fixed;
+    top: 40px;
+    right: 40px;
+    z-index: 100000;
+}
+#feedback-btn {
+    background: rgba(0,210,255,0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,210,255,0.3);
+    color: #00d2ff;
+    padding: 10px 20px;
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+#feedback-btn:hover {
+    background: #00d2ff;
+    color: #000;
+    box-shadow: 0 0 15px rgba(0,210,255,0.6);
+}
+#feedback-form-gr-logic {
+    display: none;
+    position: fixed !important;
+    top: 95px !important;
+    right: 40px !important;
+    background: rgba(15,15,15,0.98) !important;
+    border: 1px solid rgba(0,210,255,0.3) !important;
+    border-radius: 20px !important;
+    width: 320px !important;
+    padding: 20px !important;
+    z-index: 100001 !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    backdrop-filter: blur(20px);
+}
+.feedback-title {
+    color: #00d2ff;
+    font-weight: 800;
+    margin-bottom: 20px;
+    font-size: 1.2rem;
+    text-align: center;
+}
+#feedback-form-gr-logic label { display: none !important; }
+#feedback-form-gr-logic input, #feedback-form-gr-logic textarea { 
+    background: rgba(255,255,255,0.05) !important; 
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: white !important;
+}
 
 /* Responsive Mobile Fixes */
 @media (max-width: 768px) {
+    #feedback-wrapper { top: 20px; right: 20px; }
+    #feedback-form-gr-logic {
+        right: 20px !important;
+        top: 75px !important;
+        width: 280px !important;
+    }
     .splash-title-text {
         letter-spacing: 4px;
         font-size: 1.1rem;
@@ -548,6 +628,13 @@ custom_css = """
 }
 """
 
+# Encode images
+base_dir = os.path.dirname(os.path.abspath(__file__))
+logo_file = os.path.join(base_dir, "logo.png")
+hr_file = os.path.join(base_dir, "hr_guy.png")
+logo_base64 = get_image_base64(logo_file)
+hr_base64 = get_image_base64(hr_file)
+
 with gr.Blocks() as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
@@ -555,29 +642,35 @@ with gr.Blocks() as demo:
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
 
-    # Encode images
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_file = os.path.join(base_dir, "logo.png")
-    hr_file = os.path.join(base_dir, "hr_guy.png")
-    logo_base64 = get_image_base64(logo_file)
-    hr_base64 = get_image_base64(hr_file)
-
-    # 1. Splash Screen
+    # 1. Overlay Elements (Splash & Feedback Button)
     gr.HTML(f"""
         <div id="splash-screen">
             <img id="splash-logo" src="{logo_base64}" alt="AI Coaching">
             <div class="splash-title-text">Preparing Your Session</div>
         </div>
+        
+        <div id="feedback-wrapper">
+            <button id="feedback-btn" onclick="toggleFeedback()">💬 Feedback</button>
+        </div>
     """)
 
     # 2. Main App Container
     with gr.Column(elem_id="main-app-content"):
-        # Header - Centered Title, No Logo
+        # Header Section
         gr.HTML(f"""
             <div class="header-container">
                 <h1 class="main-title">AI Interview Coach</h1>
             </div>
         """)
+        
+        # Feedback Form Section (Floating via CSS)
+        with gr.Column(elem_id="feedback-form-gr-logic"):
+            gr.HTML('<div class="feedback-title">Share Your Thoughts</div>')
+            fb_name = gr.Textbox(placeholder="Name")
+            fb_email = gr.Textbox(placeholder="Email (optional)")
+            fb_msg = gr.Textbox(placeholder="Your feedback...", lines=3)
+            fb_send = gr.Button("Send Message", variant="primary")
+            fb_status = gr.Markdown("")
         
         gr.Markdown("### 🧔 Elevate Your Career with Next-Gen AI Feedback", elem_id="sub-title")
         
@@ -623,6 +716,19 @@ with gr.Blocks() as demo:
             </div>
         </div>
     """)
+
+    # 4. Custom Footer
+    gr.HTML("""
+        <footer style="text-align: center; padding: 40px 20px; border-top: 1px solid rgba(0,210,255,0.1); margin-top: 60px; color: rgba(255,255,255,0.5);">
+            <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
+        </footer>
+    """)
+
+    fb_send.click(
+        fn=handle_feedback,
+        inputs=[fb_name, fb_email, fb_msg],
+        outputs=fb_status
+    )
 
     start_btn.click(
         fn=next_question,
