@@ -255,6 +255,7 @@ function initHR() {
     const container = document.getElementById('hr-character');
     const bubble = document.getElementById('speech-bubble');
     const chatbox = document.getElementById('faq-chatbot');
+    const closeBtn = document.getElementById('close-faq');
     
     if (!container || !bubble) return;
 
@@ -287,6 +288,13 @@ function initHR() {
             chatbox.style.display = "none";
         }
     });
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            chatbox.style.display = "none";
+        });
+    }
 
     window.showAnswer = function(questionId) {
         const answers = {
@@ -352,6 +360,8 @@ custom_css = """
     text-transform: uppercase;
     font-size: 1.3rem;
     opacity: 0;
+    text-align: center;
+    max-width: 90%;
     animation: fadeIn 1.5s 1.2s forwards;
 }
 @keyframes fadeIn { to { opacity: 0.8; } }
@@ -480,6 +490,62 @@ custom_css = """
     box-shadow: 0 15px 30px rgba(0,0,0,0.6);
 }
 .gradio-container { background: #050505 !important; }
+
+/* Responsive Mobile Fixes */
+@media (max-width: 768px) {
+    .splash-title-text {
+        letter-spacing: 4px;
+        font-size: 1.1rem;
+    }
+    
+    #hr-fixed-wrapper {
+        right: 20px !important;
+        bottom: 20px !important;
+        flex-direction: column !important;
+        align-items: flex-end !important;
+        gap: 10px !important;
+    }
+    
+    #hr-container {
+        width: 80px !important;
+        height: 80px !important;
+        border-radius: 50% !important;
+        overflow: hidden !important;
+        border: 3px solid #00d2ff !important;
+        background: #050505 !important;
+        box-shadow: 0 0 20px rgba(0,210,255,0.5) !important;
+    }
+    
+    #hr-character {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        object-position: center 10% !important;
+    }
+    
+    #speech-bubble {
+        display: none !important;
+    }
+    
+    #faq-chatbot {
+        width: 280px !important;
+        margin-bottom: 0 !important;
+        position: relative !important;
+        right: 0 !important;
+        padding: 15px !important;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .main-title {
+        font-size: 2.5rem !important;
+    }
+    
+    .faq-btn {
+        padding: 10px !important;
+        font-size: 0.85rem !important;
+    }
+}
 """
 
 with gr.Blocks() as demo:
@@ -539,7 +605,10 @@ with gr.Blocks() as demo:
     gr.HTML(f"""
         <div id="hr-fixed-wrapper">
             <div id="faq-chatbot">
-                <div class="chat-title">🧔 Assistant Coach</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div class="chat-title" style="margin-bottom: 0;">🧔 Assistant Coach</div>
+                    <button id="close-faq" style="background: none; border: none; color: #00d2ff; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
+                </div>
                 <button class="faq-btn" onclick="showAnswer(1)">❓ How does it work?</button>
                 <button class="faq-btn" onclick="showAnswer(2)">❓ AI Models used?</button>
                 <button class="faq-btn" onclick="showAnswer(3)">❓ Data security?</button>
