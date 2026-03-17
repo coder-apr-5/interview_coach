@@ -732,6 +732,36 @@ custom_css = """
     margin-bottom: 12px;
 }
 
+/* Analytics Plot Responsiveness */
+.analytics-responsive-row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 20px !important;
+}
+
+.analytics-plot {
+    margin-bottom: 20px !important;
+    min-height: 500px !important;
+    flex: 1 !important;
+    background: rgba(15,15,15,0.5) !important;
+    border-radius: 20px;
+    border: 1px solid rgba(0,210,255,0.1);
+    padding: 10px;
+}
+
+@media (max-width: 1000px) {
+    .analytics-responsive-row {
+        flex-direction: column !important;
+    }
+    .analytics-plot {
+        min-height: 400px !important;
+        width: 100% !important;
+    }
+    .main-title {
+        font-size: 2.8rem !important;
+    }
+}
+
 /* Feedback Section Styles */
 #feedback-wrapper {
     position: fixed;
@@ -935,9 +965,9 @@ with gr.Blocks() as demo:
                 gr.HTML("<div style='margin-bottom: 20px; font-weight: bold; color: #00d2ff; text-transform: uppercase; letter-spacing: 2px;'>HR Feedback & Roadmap</div>")
                 evaluation_textbox = gr.Markdown("The evaluation results will appear here after the interview ends.", elem_classes="evaluation-md-box")
             with gr.Tab("📊 Performance Analytics"):
-                with gr.Row():
-                    radar_plot = gr.Plot(label="Skill Competency")
-                    bar_plot = gr.Plot(label="Peer Benchmarks")
+                with gr.Row(elem_classes="analytics-responsive-row"):
+                    radar_plot = gr.Plot(label="Skill Competency", elem_classes="analytics-plot")
+                    bar_plot = gr.Plot(label="Peer Benchmarks", elem_classes="analytics-plot")
                 correction_md = gr.Markdown("### 💡 Correction Needed\nYour analysis will appear here after the interview is complete.", elem_id="correction-needed-md")
 
     # 3. Interactive HR Character Overlay

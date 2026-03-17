@@ -92,14 +92,61 @@ Wait for `Pre-loading Whisper model...` and `Whisper ready.` before starting you
 
 ---
 
+## ✨ Detailed Features Breakdown
+
+### 1. The Smart Gatekeeper AI
+The system uses a two-stage validation process before starting any interview:
+- **Resume Verification**: Uses LLM logic to differentiate between a professional resume and random text.
+- **JD Depth Check**: Ensures the job description has enough context (skills, role, company) to generate meaningful questions.
+
+### 2. Dynamic Follow-up Logic
+Unlike static interview bots, our LLM remembers your previous answers. If you mention a specific project in Question 1, Question 2 might be a deep-dive into that project, simulating a real conversational interview flow.
+
+### 3. Neutral HR Concluding Feedback
+Upon completion, the AI generates a spoken conclusion. This message is designed to be **emotionally neutral** but behaviorally accurate—providing direct feedback on whether you met the professional standard for the role.
+
+---
+
+## 🧠 How the AI Thinks (Pipeline)
+
+1. **Input Stage**: Python extracts raw text from PDF and user inputs.
+2. **Analysis Stage**: LLaMA 3.3 creates a "Context Map" of your skills vs. job requirements.
+3. **Session Stage**: 
+    - **Whisper (ASR)**: Converts your spoken audio to text locally.
+    - **Groq (LLM)**: Analyzes the transcription and generates the next follow-up.
+    - **gTTS (TTS)**: Converts the AI's question into high-quality speech.
+4. **Evaluation Stage**: A secondary "Senior HR" persona reviews the entire chat history to generate unbiased scores and a correction roadmap.
+
+---
+
+## 🛠️ Troubleshooting & FAQs
+
+**Q: The microphone isn't working/recording.**
+- A: Ensure you are using a browser that supports `navigator.mediaDevices` (Chrome/Edge/Firefox) and that you have granted permission to the site.
+
+**Q: The AI is taking too long to reply.**
+- A: Check your `GROQ_API_KEY`. The Groq API is usually ultra-fast (sub-second), but rate limits or an invalid key can cause delays.
+
+**Q: Whisper model loading is slow.**
+- A: The first time you run the app, FFmpeg and the Whisper weights (tiny model) are downloaded. This only happens once.
+
+---
+
+## 📈 Performance Visuals
+The app generates high-fidelity **Plotly** charts:
+- **Radar Charts**: Perfect for showing balanced skillsets.
+- **Bar Charts**: Benchmarked against internal datasets for realistic comparison.
+
+---
+
 ## 👨‍💻 Developed By
 
 **Apurba Roy**
-A Full-Stack Developer and AI Enthusiast focused on building high-impact utility tools.
+*Driven by the goal of making career coaching accessible to everyone.*
 
 - [LinkedIn](https://linkedin.com/in/apurba-roy05)
 - [GitHub](https://github.com/coder-apr-5)
-- [Portfolio/Mail](mailto:apurbaroy.leo5@gmail.com)
+- [Mail](mailto:apurbaroy.leo5@gmail.com)
 
 ---
-© 2026 AI Interview Coach • **Prepare with Intelligence.**
+© 2026 AI Interview Coach • **Master Your Next Big Role.**
