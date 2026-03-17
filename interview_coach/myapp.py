@@ -966,8 +966,8 @@ with gr.Blocks() as demo:
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2)
             
             with gr.Column():
-                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=True)
-                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer", interactive=True)
+                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, buttons=["download"])
+                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer", buttons=["download"])
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
