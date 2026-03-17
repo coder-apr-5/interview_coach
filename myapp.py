@@ -303,7 +303,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
 VISITOR_SESSIONS = set()
 
 def get_visitor_count():
-    return f"<div class='visitor-count'>👥 Live Viewers: {max(1, len(VISITOR_SESSIONS))}</div>"
+    return f"<div class='visitor-count'>👥 Viewers: {max(1, len(VISITOR_SESSIONS))}</div>"
 
 def track_visitor(request: gr.Request):
     # This isn't perfect for real-time but works for session tracking in Gradio
@@ -1016,7 +1016,7 @@ with gr.Blocks() as demo:
                     <a href="https://linkedin.com/in/apurba-roy05" target="_blank" title="LinkedIn">
                         <span class="social-icon">🔗</span> LinkedIn
                     </a>
-                    <a href="https://github.com/coder-apr-5" target="_blank" title="GitHub">
+                    <a href="https://github.com/coder-apr-5/interview_coach" target="_blank" title="GitHub">
                         <span class="social-icon">💻</span> GitHub
                     </a>
                     <a href="mailto:apurbaroy.leo5@gmail.com" title="Email">
