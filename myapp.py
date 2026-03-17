@@ -1048,4 +1048,4 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    demo.launch(share=True, show_api=False)
