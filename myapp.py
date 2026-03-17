@@ -396,6 +396,7 @@ function initHR() {
         });
     }
 
+    let currentFAQId = null;
     window.showAnswer = function(questionId) {
         const answers = {
             1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
@@ -405,8 +406,15 @@ function initHR() {
             5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools) to help the AI generate relevant questions."
         };
         const display = document.getElementById('faq-answer-display');
-        display.innerText = answers[questionId];
-        display.style.opacity = '1';
+        
+        if (currentFAQId === questionId && display.style.opacity === '1') {
+            display.style.opacity = '0';
+            currentFAQId = null;
+        } else {
+            display.innerText = answers[questionId];
+            display.style.opacity = '1';
+            currentFAQId = questionId;
+        }
     };
 
     window.toggleFeedback = function() {
