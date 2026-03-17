@@ -929,7 +929,7 @@ hr_file = os.path.join(base_dir, "hr_guy.png")
 logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
-with gr.Blocks() as demo:
+with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
@@ -979,8 +979,8 @@ with gr.Blocks() as demo:
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2)
             
             with gr.Column():
-                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, buttons=["download"])
-                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer", buttons=["download"])
+                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False)
+                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
@@ -1048,4 +1048,4 @@ with gr.Blocks() as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(share=True, theme=gr.themes.Soft(), css=custom_css, js=custom_js)
+    demo.launch(share=True)
