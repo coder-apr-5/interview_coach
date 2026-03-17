@@ -401,7 +401,8 @@ function initHR() {
             1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
             2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
             3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
-            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown."
+            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
+            5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools) to help the AI generate relevant questions."
         };
         const display = document.getElementById('faq-answer-display');
         display.innerText = answers[questionId];
@@ -992,6 +993,7 @@ with gr.Blocks() as demo:
                 <button class="faq-btn" onclick="showAnswer(2)">❓ AI Models used?</button>
                 <button class="faq-btn" onclick="showAnswer(3)">❓ Data security?</button>
                 <button class="faq-btn" onclick="showAnswer(4)">❓ Where are results?</button>
+                <button class="faq-btn" onclick="showAnswer(5)">❓ How to write the JD?</button>
                 <div id="faq-answer-display">Select a query.</div>
             </div>
             <div id="hr-container">
