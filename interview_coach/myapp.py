@@ -21,17 +21,22 @@ load_dotenv()
 llm_client = None
 
 def get_llm():
-    """Lazily initialize the Groq client on first use."""
+    """Returns the initialized Groq client."""
     global llm_client
-    if llm_client is not None:
-        return llm_client
-
+    if llm_client: return llm_client
     api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        raise gr.Error("⚠️ GROQ_API_KEY is not set. Please add it to your .env file.")
-    
+    if not api_key: raise gr.Error("GROQ_API_KEY is missing!")
     llm_client = Groq(api_key=api_key)
     return llm_client
+
+# --- Global Model Loading (Avoid First-Request Delay) ---
+WHISPER_MODEL = None
+print("Pre-loading Whisper model (tiny)...")
+try:
+    WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+    print("Whisper ready.")
+except Exception as e:
+    print(f"Whisper preload failed: {e}")
 
 def chat_with_llm(role, content, json_mode=False):
     client = get_llm()
@@ -58,6 +63,8 @@ def chat_with_llm(role, content, json_mode=False):
 
 # --- NLP / Interview Logic ---
 def extract_text_from_pdf(pdf_path):
+    if not pdf_path or not os.path.exists(pdf_path):
+        return ""
     text = ""
     try:
         with open(pdf_path, 'rb') as file:
@@ -69,12 +76,26 @@ def extract_text_from_pdf(pdf_path):
     return text
 
 def Resume_Analyst(resume_text):
-    prompt = f"Analyze this resume and provide a 2 sentence summary of strengths and core skills: {resume_text}"
-    return chat_with_llm("Technical Resume Expert", prompt)
+    prompt = f"""
+    Analyze if this text is actually a candidate's resume/CV. 
+    If YES, provide a 2 sentence summary of strengths.
+    If NO (e.g., it's a random document, book, or nonsense), respond ONLY with the word 'INVALID'.
+    
+    Text: {resume_text[:2000]}
+    """
+    response = chat_with_llm("Technical Resume Gatekeeper", prompt)
+    return response.strip()
 
 def Job_Description_Expert(job_desc):
-    prompt = f"Summarize the key requirements and technologies for this job description in 2 sentences: {job_desc}"
-    return chat_with_llm("Job Requirement Analyst", prompt)
+    prompt = f"""
+    Analyze if this text is a valid Job Description with role details.
+    If YES, provide a 2 sentence summary of requirements.
+    If NO (e.g., random text, single word, or irrelevant), respond ONLY with the word 'INVALID'.
+    
+    Text: {job_desc[:2000]}
+    """
+    response = chat_with_llm("Job Requirement Gatekeeper", prompt)
+    return response.strip()
 
 def Interviewer(chat_histories, resume_summary, job_summary):
     prompt = f"""
@@ -90,20 +111,42 @@ def Interviewer(chat_histories, resume_summary, job_summary):
 
 def Evaluator(chat_histories, job_summary):
     prompt = f"""
-    Based on the following interview history and job requirements, provide:
-    1. "text_evaluation": A detailed point-by-point critique and a specific correction plan for the candidate's weaknesses.
-    2. "scores": An object with scores 0-100 for: Communication, Technical Skills, Problem Solving, Confidence, and Cultural Fit.
-    3. "benchmarks": Average scores for this role for comparison.
+    Based on the following interview history and job requirements, provide a professional evaluation.
+    Format your response purely in Markdown. Use these specific color spans for categorization:
+    - For Strengths: <span style='color: #92fe9d; font-weight: bold;'>[STRENGTH]</span>
+    - For Weaknesses: <span style='color: #ff4b4b; font-weight: bold;'>[WEAKNESS]</span>
+    - For Areas to Improve/Not Ready: <span style='color: #ffcc00; font-weight: bold;'>[NOT READY YET]</span>
+    
+    Structure the report with clear headings, bullet points, and ample white space.
+    Return a JSON object with these keys: 
+    1. "text_evaluation": The full formatted Markdown report.
+    2. "correction_needed": A concise bulleted list of fixes.
+    3. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
+    4. "benchmarks": {{"Communication": y, ...}}
 
-    Answer Histories: {chat_histories}
+    Interview History: {chat_histories}
     Job Summary: {job_summary}
     """
     response_json = chat_with_llm("Senior HR Evaluator. Output JSON.", prompt, json_mode=True)
     try:
         data = json.loads(response_json)
+        # Add extra spacing and clear sections
+        eval_text = data.get('text_evaluation', "")
+        
+        # Ensure clear separation with horizontal lines and double spacing
+        eval_text = eval_text.replace("###", "\n---\n###")
+        eval_text = eval_text.replace("##", "\n---\n##")
+        eval_text = eval_text.replace("\n*", "\n\n*") # Extra space for bullet points
+        
+        data['text_evaluation'] = eval_text
         return data
     except:
-        return {"text_evaluation": response_json, "scores": {"Communication": 70, "Technical Skills": 70, "Problem Solving": 70, "Confidence": 70, "Cultural Fit": 70}, "benchmarks": {"Communication": 75, "Technical Skills": 75, "Problem Solving": 75, "Confidence": 75, "Cultural Fit": 75}}
+        return {
+            "text_evaluation": "### Evaluation unavailable. \nPlease try again.",
+            "correction_needed": "* No data available.",
+            "scores": {"Communication": 70, "Technical Skills": 70, "Problem Solving": 70, "Confidence": 70, "Cultural Fit": 70},
+            "benchmarks": {"Communication": 75, "Technical Skills": 75, "Problem Solving": 75, "Confidence": 75, "Cultural Fit": 75}
+        }
 
 def create_performance_charts(scores, benchmarks=None):
     # Radar Chart
@@ -155,25 +198,24 @@ def create_performance_charts(scores, benchmarks=None):
     return fig_radar, fig_bar
 
 # --- Voice / Audio ---
-WHISPER_MODEL = None
-
 def transcribe_audio_faster_whisper(audio_path):
     global WHISPER_MODEL
-    if audio_path is None: return ""
+    if not audio_path or not os.path.exists(audio_path): return ""
     
-    print(f"Transcribing audio: {audio_path}")
+    # Fallback if preload failed
     if WHISPER_MODEL is None:
-        print("Loading Whisper model...")
-        WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+        try:
+            WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+        except:
+            return "Speech recognition error."
     
     try:
         segments, info = WHISPER_MODEL.transcribe(audio_path, beam_size=5)
         text = " ".join([segment.text for segment in segments])
-        print(f"Transcription result: {text}")
-        return text
+        return text.strip()
     except Exception as e:
         print(f"Transcription error: {e}")
-        return "Audio transcription failed."
+        return ""
 
 def text_to_speech(text):
     print(f"Generating TTS for: {text[:50]}...")
@@ -190,23 +232,46 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
     
     # 1. Initialize summaries on first step
     if interview_step == 0:
-        print("Initializing session...")
+        if not resume_pdf:
+            raise gr.Error("⚠️ Please upload your resume (PDF) first.")
+        if not job_desc or len(job_desc.strip()) < 10:
+            raise gr.Error("⚠️ Please provide a valid job description.")
+            
+        print("Validating inputs...")
         resume_text = extract_text_from_pdf(resume_pdf)
-        resume_summary = Resume_Analyst(resume_text)
-        job_summary = Job_Description_Expert(job_desc)
+        r_summary = Resume_Analyst(resume_text)
+        if "INVALID" in r_summary.upper():
+            raise gr.Error("❌ Access Denied: The uploaded file does not appear to be a valid Resume/CV. Please upload a proper PDF profile.")
+            
+        j_summary = Job_Description_Expert(job_desc)
+        if "INVALID" in j_summary.upper():
+            raise gr.Error("❌ Access Denied: The Job Description provided is invalid or too brief. Please provide a clear role requirement.")
+            
+        print("Initialization successful.")
+        resume_summary = r_summary
+        job_summary = j_summary
         chat_histories = {}
         
     # 2. Process user's answer from previous question (if any)
     if user_audio and latest_question_text:
+        print(f"User answered. Path: {user_audio}")
         answer_text = transcribe_audio_faster_whisper(user_audio)
+        print(f"Transcribed: {answer_text}")
         chat_histories[latest_question_text] = answer_text
     
     # Check if interview is complete
     if interview_step >= num_q:
-        print("Interview complete. Generating evaluation...")
+        print(f"Interview complete after {interview_step} questions. Evaluating...")
         eval_data = Evaluator(chat_histories, job_summary)
+        print("Evaluation received.")
         radar, bar = create_performance_charts(eval_data['scores'], eval_data['benchmarks'])
-        return None, None, gr.update(value="✅ Interview Complete", interactive=False), eval_data['text_evaluation'], radar, bar, chat_histories, interview_step + 1, resume_summary, job_summary, ""
+        print("Charts created.")
+        
+        correction_text = f"### 💡 Correction Needed:\n{eval_data.get('correction_needed', 'Continue practicing to improve your scores.')}"
+        
+        return (None, None, gr.update(value="✅ Interview Complete", interactive=False), 
+                eval_data['text_evaluation'], radar, bar, correction_text,
+                chat_histories, interview_step + 1, resume_summary, job_summary, "")
 
     # 3. Generate and speak next question
     print("Generating next question...")
@@ -215,7 +280,22 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
     
     button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
     
-    return audio_file, None, gr.update(value=button_label, interactive=True), "Evaluation will appear when the interview ends.", None, None, chat_histories, interview_step + 1, resume_summary, job_summary, question
+    return (audio_file, None, gr.update(value=button_label, interactive=True), 
+            "Evaluation will appear when the interview ends.", None, None, "",
+            chat_histories, interview_step + 1, resume_summary, job_summary, question)
+
+# --- Global Data for Viewer Count ---
+VISITOR_SESSIONS = set()
+
+def get_visitor_count():
+    return f"<div class='visitor-count'>👥 Live Viewers: {max(1, len(VISITOR_SESSIONS))}</div>"
+
+def track_visitor(request: gr.Request):
+    # This isn't perfect for real-time but works for session tracking in Gradio
+    if request:
+        session_id = request.session_hash
+        VISITOR_SESSIONS.add(session_id)
+    return get_visitor_count()
 
 def get_image_base64(image_path):
     """Convert an image file to a base64 string for embedding in HTML."""
@@ -807,11 +887,13 @@ with gr.Blocks() as demo:
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
             with gr.Tab("📝 Detailed Evaluation"):
-                evaluation_textbox = gr.Textbox(label="HR Feedback & Roadmap", lines=15)
+                gr.HTML("<div style='margin-bottom: 20px; font-weight: bold; color: #00d2ff; text-transform: uppercase; letter-spacing: 2px;'>HR Feedback & Roadmap</div>")
+                evaluation_textbox = gr.Markdown("The evaluation results will appear here after the interview ends.", elem_classes="evaluation-md-box")
             with gr.Tab("📊 Performance Analytics"):
                 with gr.Row():
                     radar_plot = gr.Plot(label="Skill Competency")
                     bar_plot = gr.Plot(label="Peer Benchmarks")
+                correction_md = gr.Markdown("### 💡 Correction Needed\nYour analysis will appear here after the interview is complete.", elem_id="correction-needed-md")
 
     # 3. Interactive HR Character Overlay
     gr.HTML(f"""
@@ -837,28 +919,35 @@ with gr.Blocks() as demo:
     """)
 
     # 4. Custom Footer
-    gr.HTML("""
-        <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; border-top: 1px solid rgba(0,210,255,0.1); margin-top: 60px; color: rgba(255,255,255,0.5);">
-            <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
-            <div class="dev-credit">Developed by Apurba Roy</div>
-            <div class="social-links">
-                <a href="https://linkedin.com/in/apurba-roy-dev" target="_blank" title="LinkedIn">
-                    <span class="social-icon">🔗</span> LinkedIn
-                </a>
-                <a href="https://github.com/ApurbaRoy74" target="_blank" title="GitHub">
-                    <span class="social-icon">💻</span> GitHub
-                </a>
-                <a href="mailto:apurbaroy.dev@gmail.com" title="Email">
-                    <span class="social-icon">✉️</span> Mail
-                </a>
-            </div>
-        </footer>
-    """)
+    with gr.Row():
+        with gr.Column(scale=1):
+            visitor_md = gr.HTML(get_visitor_count())
+        with gr.Column(scale=4):
+            gr.HTML("""
+                <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; color: rgba(255,255,255,0.5);">
+                    <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
+                    <div class="dev-credit">Developed by Apurba Roy</div>
+                    <div class="social-links">
+                        <a href="https://linkedin.com/in/apurba-roy05" target="_blank" title="LinkedIn">
+                            <span class="social-icon">🔗</span> LinkedIn
+                        </a>
+                        <a href="https://github.com/coder-apr-5" target="_blank" title="GitHub">
+                            <span class="social-icon">💻</span> GitHub
+                        </a>
+                        <a href="mailto:apurbaroy.leo5@gmail.com" title="Email">
+                            <span class="social-icon">✉️</span> Mail
+                        </a>
+                    </div>
+                </footer>
+            """)
+
+    # 5. Periodic visitor update (runs on every session load)
+    demo.load(track_visitor, None, visitor_md)
 
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, radar_plot, bar_plot, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
     )
 
 if __name__ == "__main__":
