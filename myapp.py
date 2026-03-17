@@ -407,12 +407,14 @@ function initHR() {
         };
         const display = document.getElementById('faq-answer-display');
         
-        if (currentFAQId === questionId && display.style.opacity === '1') {
+        if (currentFAQId === questionId && display.style.display === 'block') {
             display.style.opacity = '0';
+            setTimeout(() => { display.style.display = 'none'; }, 300);
             currentFAQId = null;
         } else {
             display.innerText = answers[questionId];
-            display.style.opacity = '1';
+            display.style.display = 'block';
+            setTimeout(() => { display.style.opacity = '1'; }, 10);
             currentFAQId = questionId;
         }
     };
@@ -640,8 +642,10 @@ custom_css = """
     padding: 18px;
     border-radius: 15px;
     opacity: 0;
+    display: none;
     border-left: 6px solid #00d2ff;
     line-height: 1.5;
+    transition: opacity 0.3s ease;
 }
 #hr-container {
     width: 230px;
@@ -1002,7 +1006,7 @@ with gr.Blocks() as demo:
                 <button class="faq-btn" onclick="showAnswer(3)">❓ Data security?</button>
                 <button class="faq-btn" onclick="showAnswer(4)">❓ Where are results?</button>
                 <button class="faq-btn" onclick="showAnswer(5)">❓ How to write the JD?</button>
-                <div id="faq-answer-display">Select a query.</div>
+                <div id="faq-answer-display"></div>
             </div>
             <div id="hr-container">
                 <div id="speech-bubble">Hi, I'm your Targeted Interview Coach</div>
