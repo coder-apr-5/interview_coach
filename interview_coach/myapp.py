@@ -120,10 +120,10 @@ def Evaluator(chat_histories, job_summary):
     Structure the report with clear headings, bullet points, and ample white space.
     Return a JSON object with these keys: 
     1. "text_evaluation": The full formatted Markdown report.
-    2. "correction_needed": A concise bulleted list of fixes.
+    2. "correction_needed": A detailed and comprehensive list of specific improvement points and fixes (as a JSON array of strings).
     3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
-    4. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
-    5. "benchmarks": {{"Communication": y, ...}}
+    4. "scores": {"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x} 
+    5. "benchmarks": {"Communication": y, ...}
 
     Interview History: {chat_histories}
     Job Summary: {job_summary}
@@ -140,6 +140,16 @@ def Evaluator(chat_histories, job_summary):
         eval_text = eval_text.replace("\n*", "\n\n*") # Extra space for bullet points
         
         data['text_evaluation'] = eval_text
+        
+        # Format corrections as bullet points if they are in a list
+        corrections = data.get('correction_needed', "")
+        if isinstance(corrections, list):
+            data['correction_needed'] = "\n".join([f"- {c}" for c in corrections])
+        elif isinstance(corrections, str) and corrections.strip():
+            # If it's a string, ensure it's treated as markdown bullets or add them
+            if not corrections.strip().startswith(("-", "*", "1.")):
+                data['correction_needed'] = "- " + corrections.replace("\n", "\n- ")
+
         return data
     except:
         return {
@@ -956,8 +966,8 @@ with gr.Blocks() as demo:
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2)
             
             with gr.Column():
-                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False)
-                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
+                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=True)
+                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer", interactive=True)
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
