@@ -686,6 +686,46 @@ custom_css = """
 .social-icon {
     font-size: 1.4rem;
 }
+.visitor-count {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    color: #92fe9d;
+    font-weight: 600;
+    opacity: 0.8;
+    background: rgba(146, 254, 157, 0.1);
+    padding: 8px 15px;
+    border-radius: 20px;
+    border: 1px solid rgba(146, 254, 157, 0.2);
+    width: fit-content;
+    margin-top: 40px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Markdown Feedback Styling */
+.evaluation-md-box {
+    padding: 30px;
+    background: rgba(255,255,255,0.03) !important;
+    border-radius: 20px !important;
+    border: 1px solid rgba(0,210,255,0.15) !important;
+    max-height: 800px;
+    overflow-y: auto;
+    line-height: 1.9;
+    color: #eee;
+}
+.evaluation-md-box h1, .evaluation-md-box h2, .evaluation-md-box h3 {
+    margin-top: 40px !important;
+    margin-bottom: 20px !important;
+    color: #00d2ff !important;
+    border-bottom: 1px solid rgba(0,210,255,0.1);
+    padding-bottom: 10px;
+}
+.evaluation-md-box p {
+    margin-bottom: 20px;
+}
+.evaluation-md-box li {
+    margin-bottom: 12px;
+}
 
 /* Feedback Section Styles */
 #feedback-wrapper {
@@ -918,30 +958,28 @@ with gr.Blocks() as demo:
         </div>
     """)
 
-    # 4. Custom Footer
-    with gr.Row():
-        with gr.Column(scale=1):
-            visitor_md = gr.HTML(get_visitor_count())
-        with gr.Column(scale=4):
-            gr.HTML("""
-                <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; color: rgba(255,255,255,0.5);">
-                    <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
-                    <div class="dev-credit">Developed by Apurba Roy</div>
-                    <div class="social-links">
-                        <a href="https://linkedin.com/in/apurba-roy05" target="_blank" title="LinkedIn">
-                            <span class="social-icon">🔗</span> LinkedIn
-                        </a>
-                        <a href="https://github.com/coder-apr-5" target="_blank" title="GitHub">
-                            <span class="social-icon">💻</span> GitHub
-                        </a>
-                        <a href="mailto:apurbaroy.leo5@gmail.com" title="Email">
-                            <span class="social-icon">✉️</span> Mail
-                        </a>
-                    </div>
-                </footer>
-            """)
+    # 4. Custom Footer & Visitor Counter
+    with gr.Column(elem_id="footer-area"):
+        visitor_md = gr.HTML(get_visitor_count(), elem_id="visitor-wrapper")
+        gr.HTML("""
+            <footer class="custom-app-footer" style="text-align: center; padding: 40px 20px; color: rgba(255,255,255,0.5);">
+                <p style="font-size: 0.9rem;">© 2026 AI Interview Coach • Built with Gradio & Groq • Elevate Your Career</p>
+                <div class="dev-credit">Developed by Apurba Roy</div>
+                <div class="social-links">
+                    <a href="https://linkedin.com/in/apurba-roy05" target="_blank" title="LinkedIn">
+                        <span class="social-icon">🔗</span> LinkedIn
+                    </a>
+                    <a href="https://github.com/coder-apr-5" target="_blank" title="GitHub">
+                        <span class="social-icon">💻</span> GitHub
+                    </a>
+                    <a href="mailto:apurbaroy.leo5@gmail.com" title="Email">
+                        <span class="social-icon">✉️</span> Mail
+                    </a>
+                </div>
+            </footer>
+        """)
 
-    # 5. Periodic visitor update (runs on every session load)
+    # 5. Periodic visitor update
     demo.load(track_visitor, None, visitor_md)
 
     start_btn.click(
