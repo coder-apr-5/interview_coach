@@ -1,79 +1,105 @@
-# 🧔 AI Interview Coach
+# 🧔 AI Interview Coach: Next-Gen Career Preparation
 
-Elevate your career preparation with a next-gen, AI-powered interview simulation experience. The **AI Interview Coach** uses state-of-the-art Large Language Models (LLMs) and Speech-to-Text technology to provide real-time, tailored interview practice and deep performance analytics.
+Elevate your career preparation with a sophisticated, AI-driven interview simulation. The **AI Interview Coach** leverages high-performance Large Language Models (LLMs) and local Speech-to-Text inference to provide a hyper-realistic, low-latency, and insightful practice environment.
 
-![Premium UI Mockup](https://raw.githubusercontent.com/coder-apr-5/Interview_Coach/main/logo.png) (Replace with your actual repo image path)
+---
 
-## ✨ Features
+## 🚀 Key Innovation: The Smart Gatekeeper
+Unlike generic AI tools, our coach includes a **Technical Resume & JD Validator**. 
+- **Automatic Validation**: Before the session begins, the system verifies if the uploaded PDF is a legitimate Resume and if the description provided is a valid Job Requirement.
+- **Access Control**: Nonsensical documents or random text inputs are immediately flagged, preventing credit waste and ensuring a professional simulation.
 
-- **🚀 Smart Initialization**: Analyzes your Resume (PDF) and the target Job Description to generate highly specific technical and behavioral questions.
-- **🎙️ Realistic Voice Interaction**: Features an interactive AI Interviewer that speaks to you. Respond using your microphone for a true-to-life experience.
-- **🛡️ Access Control & Validation**: Built-in "Gatekeeper" AI that detects and rejects invalid PDFs or nonsensical job descriptions to maintain quality.
-- **📊 Detailed HR Evaluation**:
-  - **Color-Coded Feedback**: Instant visual cues for <span style="color: #92fe9d">Strengths</span>, <span style="color: #ff4b4b">Weaknesses</span>, and <span style="color: #ffcc00">Areas of Correction</span>.
-  - **Performance Radar**: A 360-degree view of your core competencies (Communication, Technical, etc.).
-  - **Peer Benchmarking**: Compare your results against industry standard averages.
-- **🌑 Premium Dark Interface**: A sleek, glassmorphic design optimized for both desktop and mobile devices.
-- **💬 Direct Feedback Integration**: Real-time feedback form integrated with Formspree for seamless bug reporting or suggestions.
+## ✨ Advanced Features
 
-## 🛠️ Tech Stack
+### 🎙️ Immersive Voice Interaction
+- **Real-time Transcription**: Powered by `Faster-Whisper` (Standard tiny model) for millisecond-latency speech recognition.
+- **Autonomous Conversationalist**: The AI doesn't just ask questions; it listens and follows up based on your previous answers using LLaMA 3.3 70B.
+- **HR Conclusion**: At the end of the session, receive a spoken summary of your performance in a neutral, professional HR tone.
 
-- **Framework**: [Gradio](https://gradio.app/) for the interactive web interface.
-- **Intelligence**: [Groq](https://groq.com/) API (LLaMA 3.3 70B) for ultra-fast response times.
-- **Voice Recognition**: [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) (AI-powered Speech-to-Text).
-- **Speech Synthesis**: [gTTS](https://github.com/pndurette/gTTS) (Google Text-to-Speech).
-- **Visualization**: [Plotly](https://plotly.com/python/) for interactive charts.
+### 📊 Professional-Grade Analytics
+- **Color-Coded Feedback**:
+  - <span style="color: #92fe9d; font-weight: bold;">[STRENGTHS]</span>: Highlighting where you excelled.
+  - <span style="color: #ff4b4b; font-weight: bold;">[WEAKNESSES]</span>: Pinpointing specific gaps in knowledge or delivery.
+  - <span style="color: #ffcc00; font-weight: bold;">[NOT READY YET]</span>: Topics where you need more hands-on experience.
+- **Interactive Radar Maps**: Visualize your competency across Communication, Technical Depth, Problem Solving, Confidence, and Cultural Fit.
+- **Industry Benchmarking**: Compare your calculated scores against live peer benchmarks for your specific role.
 
-## ⚙️ Installation & Setup
+### 🌘 Premium Design System
+- **Glassmorphic UI**: A custom-built dark interface with cyan and green accents.
+- **Responsive Layout**: Seamlessly transitions from high-resolution desktop monitors to mobile devices.
+- **Interactive HR Character**: A fixed on-screen coach that tracks mouse movements and provides helpful tips via a FAQ chat bubble.
 
-### Prerequisites
-- Python 3.10+
-- A [Groq API Key](https://console.groq.com/keys)
+---
 
-### Steps
+## 🛠️ Architecture & Tech Stack
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/coder-apr-5/Interview_Coach.git
-   cd Interview_Coach
-   ```
+```mermaid
+graph TD
+    A[User Uploads Resume & JD] --> B{Gatekeeper Validation}
+    B -- Invalid --> C[Access Denied Error]
+    B -- Valid --> D[Resume/JD Summary Generation]
+    D --> E[Interactive Interview Loop]
+    E --> F[ASR: Faster-Whisper]
+    F --> G[LLM: Groq LLaMA 3.3]
+    G --> H[TTS: gTTS]
+    H --> E
+    E --> I[Final Evaluation]
+    I --> J[Performance Charts & Spoken Conclusion]
+```
 
-2. **Setup Virtual Environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+- **Frontend**: Gradio (Custom CSS/JS injected for premium dark theme).
+- **Core Intelligence**: Groq API (LLaMA-3.3-70B-Versatile for extreme speed).
+- **Audio Processing**: Faster-Whisper (In-IDE local inference).
+- **PDF Extraction**: PyPDF2.
+- **Data Viz**: Plotly.
 
-3. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+---
 
-4. **Environment Variables**
-   Create a `.env` file in the root directory:
-   ```env
-   GROQ_API_KEY=your_actual_key_here
-   ```
+## ⚙️ Detailed Setup Guide
 
-5. **Run the Application**
-   ```bash
-   python myapp.py
-   ```
+### 1. Prerequisites
+- **Python**: 3.10 or 3.11 recommended.
+- **FFmpeg**: Required for audio processing. Install via `brew install ffmpeg` (Mac) or `choco install ffmpeg` (Windows).
 
-## 👥 Usage
+### 2. Installation
+```bash
+# Clone the repo
+git clone https://github.com/coder-apr-5/Interview_Coach.git
+cd Interview_Coach
 
-1. **Upload Resume**: Drop your PDF resume into the upload box.
-2. **Paste JD**: Copy-paste the job requirements you are preparing for.
-3. **Start Interview**: The AI will greet you and ask the first question.
-4. **Speak**: Use the microphone component to record your answer.
-5. **Get Results**: After completing the set number of questions, navigate to the **Evaluation** and **Analytics** tabs for your full roadmap.
+# Create environment
+python -m venv venv
+./venv/Scripts/activate  # Windows
+
+# Install wheels first for audio (optional but recommended)
+pip install setuptools wheel
+
+# Install core requirements
+pip install -r requirements.txt
+```
+
+### 3. Configuration
+Create a `.env` file:
+```env
+GROQ_API_KEY=gsk_your_key_here
+```
+
+### 4. Running the App
+```bash
+python myapp.py
+```
+Wait for `Pre-loading Whisper model...` and `Whisper ready.` before starting your first session for the best experience.
+
+---
 
 ## 👨‍💻 Developed By
 
 **Apurba Roy**
+A Full-Stack Developer and AI Enthusiast focused on building high-impact utility tools.
+
 - [LinkedIn](https://linkedin.com/in/apurba-roy05)
 - [GitHub](https://github.com/coder-apr-5)
-- [Email](mailto:apurbaroy.leo5@gmail.com)
+- [Portfolio/Mail](mailto:apurbaroy.leo5@gmail.com)
 
 ---
-© 2026 AI Interview Coach • Built with Gradio & Groq
+© 2026 AI Interview Coach • **Prepare with Intelligence.**

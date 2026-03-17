@@ -121,8 +121,9 @@ def Evaluator(chat_histories, job_summary):
     Return a JSON object with these keys: 
     1. "text_evaluation": The full formatted Markdown report.
     2. "correction_needed": A concise bulleted list of fixes.
-    3. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
-    4. "benchmarks": {{"Communication": y, ...}}
+    3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
+    4. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
+    5. "benchmarks": {{"Communication": y, ...}}
 
     Interview History: {chat_histories}
     Job Summary: {job_summary}
@@ -269,7 +270,11 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         
         correction_text = f"### 💡 Correction Needed:\n{eval_data.get('correction_needed', 'Continue practicing to improve your scores.')}"
         
-        return (None, None, gr.update(value="✅ Interview Complete", interactive=False), 
+        # 4. Generate Spoken Conclusion
+        conclusion_text = eval_data.get('spoken_conclusion', "The interview is now complete. Thank you for your time.")
+        conclusion_audio = text_to_speech(conclusion_text)
+
+        return (conclusion_audio, None, gr.update(value="✅ Interview Complete", interactive=False), 
                 eval_data['text_evaluation'], radar, bar, correction_text,
                 chat_histories, interview_step + 1, resume_summary, job_summary, "")
 
