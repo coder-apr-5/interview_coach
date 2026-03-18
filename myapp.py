@@ -264,10 +264,12 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         print("Initializing session...")
         if not resume_pdf:
             print("❌ Failure: No Resume Data Received")
-            raise gr.Error("⚠️ Resume file missing. Please re-upload your PDF.")
+            gr.Warning("⚠️ Resume file missing. Please re-upload your PDF.")
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
         if not job_desc or len(job_desc.strip()) < 10:
             print("❌ Failure: Invalid/Empty Job Description")
-            raise gr.Error("⚠️ Job description is too short or empty.")
+            gr.Warning("⚠️ Job description is too short or empty.")
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
             
         print(f"Validating resume at: {resume_pdf}")
         try:
@@ -275,14 +277,18 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             print(f"Extracted {len(resume_text)} characters from PDF.")
         except Exception as e:
             print(f"❌ PDF Extraction Error: {e}")
-            raise gr.Error(f"❌ Error reading PDF: {str(e)}")
+            gr.Warning(f"❌ Error reading PDF: {str(e)}")
+            return (None, gr.update(), f"❌ Error reading PDF: {str(e)}", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
+            
         r_summary = Resume_Analyst(resume_text)
         if "INVALID" in r_summary.upper():
-            raise gr.Error("❌ Access Denied: The uploaded file does not appear to be a valid Resume/CV. Please upload a proper PDF profile.")
+            gr.Warning("❌ Access Denied: The uploaded file does not appear to be a valid Resume/CV.")
+            return (None, gr.update(), "❌ Invalid Resume.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
             
         j_summary = Job_Description_Expert(job_desc)
         if "INVALID" in j_summary.upper():
-            raise gr.Error("❌ Access Denied: The Job Description provided is invalid or too brief. Please provide a clear role requirement.")
+            gr.Warning("❌ Access Denied: The Job Description provided is invalid or too brief.")
+            return (None, gr.update(), "❌ Invalid Job Description.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
             
         print("Initialization successful.")
         resume_summary = r_summary
@@ -310,7 +316,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         conclusion_text = eval_data.get('spoken_conclusion', "The interview is now complete. Thank you for your time.")
         conclusion_audio = text_to_speech(conclusion_text)
 
-        return (conclusion_audio, None, gr.update(value="✅ Interview Complete", interactive=False), 
+        return (conclusion_audio, gr.update(value="✅ Interview Complete", interactive=False), 
                 eval_data['text_evaluation'], radar, bar, correction_text,
                 chat_histories, interview_step + 1, resume_summary, job_summary, "")
 
@@ -321,7 +327,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
     
     button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
     
-    return (audio_file, None, gr.update(value=button_label, interactive=True), 
+    return (audio_file, gr.update(value=button_label, interactive=True), 
             "Evaluation will appear when the interview ends.", None, None, "",
             chat_histories, interview_step + 1, resume_summary, job_summary, question)
 
@@ -946,7 +952,11 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+    ).then(
+        fn=lambda: None,
+        inputs=[],
+        outputs=[user_answer]
     )
 
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
