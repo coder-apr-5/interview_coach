@@ -863,7 +863,42 @@ hr_file = os.path.join(base_dir, "hr_guy.png")
 logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
-with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_js}\n</script>") as demo:
+# Dynamic PWA Manifest Generation
+manifest_json = f"""
+{{
+  "name": "AI Interview Coach",
+  "short_name": "AICoach",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "description": "Your Personalized AI Interview Coach",
+  "icons": [
+    {{
+      "src": "{logo_base64}",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }}
+  ]
+}}
+"""
+manifest_b64 = base64.b64encode(manifest_json.encode('utf-8')).decode('utf-8')
+manifest_data_uri = f"data:application/json;charset=utf-8;base64,{manifest_b64}"
+
+custom_head = f"""
+<link rel="manifest" href="{manifest_data_uri}">
+<meta name="theme-color" content="#050505">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AI Coach">
+<link rel="apple-touch-icon" href="{logo_base64}">
+<script>
+{custom_js}
+</script>
+"""
+
+with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
