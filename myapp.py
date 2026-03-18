@@ -466,7 +466,7 @@ custom_css = """
     background: #020202;
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     z-index: 100005;
-    animation: fadeAway 0.8s 2s forwards;
+    animation: fadeAway 0.8s 4s forwards;
     pointer-events: none;
 }
 @keyframes fadeAway { 
@@ -476,9 +476,18 @@ custom_css = """
 
 #splash-logo {
     width: 280px; height: auto;
-    animation: pulseGlow 2s infinite alternate;
+    opacity: 0;
+    transform: scale(0.5);
+    animation: popOut 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, pulseGlow 2s 1.2s infinite alternate;
 }
-@keyframes pulseGlow { from { filter: drop-shadow(0 0 5px #00d2ff); } to { filter: drop-shadow(0 0 25px #3a7bd5); } }
+@keyframes popOut {
+    0% { opacity: 0; transform: scale(0.3); }
+    100% { opacity: 1; transform: scale(1); }
+}
+@keyframes pulseGlow { 
+    from { filter: drop-shadow(0 0 5px #00d2ff); transform: scale(1); } 
+    to { filter: drop-shadow(0 0 25px #3a7bd5); transform: scale(1.05); } 
+}
 @keyframes fadeIn { to { opacity: 1; visibility: visible; } }
 
 #main-app-content {
