@@ -386,9 +386,16 @@ window.showAnswer = function(qId) {
     const display = document.getElementById('faq-answer-display');
     if (!display) return;
     
-    display.innerText = answers[qId];
-    display.style.display = 'block';
-    display.style.opacity = '1';
+    if (window.currentFAQId === qId && display.style.display === 'block') {
+        display.style.opacity = '0';
+        setTimeout(() => { display.style.display = 'none'; }, 300);
+        window.currentFAQId = null;
+    } else {
+        display.innerText = answers[qId];
+        display.style.display = 'block';
+        setTimeout(() => { display.style.opacity = '1'; }, 10);
+        window.currentFAQId = qId;
+    }
 };
 
 window.interviewTime = 0;
@@ -531,6 +538,8 @@ custom_css = """
     margin-bottom: 110px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.9);
     backdrop-filter: blur(15px);
+    max-height: 70vh;
+    overflow-y: auto;
 }
 .chat-title {
     color: #00d2ff;
