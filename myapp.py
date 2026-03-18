@@ -192,7 +192,7 @@ def create_performance_charts(scores, benchmarks=None):
             theta=categories,
             fill='toself',
             name='Industry Benchmark',
-            line_color='#92fe9d',
+            line_color='#2eb82e',
             opacity=0.5
         ))
         
@@ -208,7 +208,7 @@ def create_performance_charts(scores, benchmarks=None):
     # Bar Chart Comparison
     fig_bar = go.Figure(data=[
         go.Bar(name='You', x=categories, y=values, marker_color='#00d1ff'),
-        go.Bar(name='Benchmark', x=categories, y=[benchmarks.get(c, 75) for c in categories], marker_color='#92fe9d')
+        go.Bar(name='Benchmark', x=categories, y=[benchmarks.get(c, 75) for c in categories], marker_color='#2eb82e')
     ])
     fig_bar.update_layout(
         barmode='group',
@@ -391,11 +391,28 @@ window.showAnswer = function(qId) {
     display.style.opacity = '1';
 };
 
+window.interviewTime = 0;
+window.interviewTimer = null;
+window.startInterviewTimer = function() {
+    if (!window.interviewTimer) {
+        window.interviewTimer = setInterval(() => {
+            window.interviewTime++;
+            const m = Math.floor(window.interviewTime / 60).toString().padStart(2, '0');
+            const s = (window.interviewTime % 60).toString().padStart(2, '0');
+            const el = document.getElementById('interview-timer-display');
+            if(el) {
+                el.innerHTML = `⏱️ Elapsed: <span style="color:#00d2ff">${m}:${s}</span>`;
+            }
+        }, 1000);
+    }
+    return [];
+};
+
 setInterval(() => {
     if (!document.body.classList.contains('dark')) document.body.classList.add('dark');
     
     if (typeof window.hr_tips === 'undefined') {
-        window.hr_tips = ["Hi, I'm your Interview Coach", "How can I help you?"];
+        window.hr_tips = ["Hi, I'm your Personalized Interview Coach", "How can I help you?"];
         window.hr_tip_index = 0;
     }
     
@@ -883,7 +900,15 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_
             with gr.Column():
                 resume_input = gr.File(label="📄 Upload Resume (PDF)", type='filepath')
                 job_desc_input = gr.Textbox(label="💼 Job Description", lines=10, placeholder="Paste the job requirements here...")
-                num_q_input = gr.Slider(label="❓ Questions", minimum=1, maximum=10, value=5, step=1)
+                with gr.Row():
+                    num_q_input = gr.Slider(label="❓ Questions", minimum=1, maximum=10, value=5, step=1)
+                    timer_display = gr.HTML("<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: 10 mins</div>")
+                
+                # Dynamic update of estimated time based on question count slider
+                def update_est(val):
+                    return f"<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: {val * 2} mins</div>"
+                num_q_input.change(fn=update_est, inputs=num_q_input, outputs=timer_display)
+
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2, elem_id="start-interview-btn")
             
             with gr.Column():
@@ -917,7 +942,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_
                 <div id="faq-answer-display"></div>
             </div>
             <div id="hr-container" onclick="toggleFAQ()">
-                <div id="speech-bubble">Hi, I'm your Interview Coach</div>
+                <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
                 <div id="hr-character">
                     <img src="{hr_base64}" alt="HR Coach">
                 </div>
@@ -952,7 +977,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
+        js="function() { if(window.startInterviewTimer) { window.startInterviewTimer(); } return arguments; }"
     ).then(
         fn=lambda: None,
         inputs=[],
