@@ -122,8 +122,10 @@ def Evaluator(chat_histories, job_summary):
     1. "text_evaluation": The full formatted Markdown report.
     2. "correction_needed": A detailed and comprehensive list of specific improvement points and fixes (as a JSON array of strings).
     3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
-    4. "scores": {"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x} 
-    5. "benchmarks": {"Communication": y, ...}
+    4. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
+    5. "benchmarks": {{"Communication": y, "Technical Skills": y, "Problem Solving": y, "Confidence": y, "Cultural Fit": y}}
+    
+    GUIDELINE: Benchmarks should represent a high-performing (Top 10%) professional for the role. These values should typically range between 75 and 90 to provide a realistic challenge and standard.
 
     Interview History: {chat_histories}
     Job Summary: {job_summary}
@@ -139,7 +141,17 @@ def Evaluator(chat_histories, job_summary):
         eval_text = eval_text.replace("##", "\n---\n##")
         eval_text = eval_text.replace("\n*", "\n\n*") # Extra space for bullet points
         
-        data['text_evaluation'] = eval_text
+        # Add Spoken Conclusion to the Top
+        conclusion = data.get('spoken_conclusion', '')
+        if conclusion:
+            eval_text = f"## 🎤 Final HR Verdict\n**{conclusion}**\n\n---\n\n" + eval_text
+            
+        # Append real-time Q&A transcript to the basis of the evaluation
+        qna_transcript = "\n---\n## 📝 Q&A Transcript\n\n"
+        for q, a in chat_histories.items():
+            qna_transcript += f"**🧔 Interviewer:** {q}\n\n**🎙️ You:** {a}\n\n"
+            
+        data['text_evaluation'] = eval_text + qna_transcript
         
         # Format corrections as bullet points if they are in a list
         corrections = data.get('correction_needed', "")
@@ -174,7 +186,7 @@ def create_performance_charts(scores, benchmarks=None):
     ))
     
     if benchmarks:
-        b_values = [benchmarks.get(cat, 50) for cat in categories]
+        b_values = [benchmarks.get(cat, 75) for cat in categories]
         fig_radar.add_trace(go.Scatterpolar(
             r=b_values,
             theta=categories,
@@ -196,7 +208,7 @@ def create_performance_charts(scores, benchmarks=None):
     # Bar Chart Comparison
     fig_bar = go.Figure(data=[
         go.Bar(name='You', x=categories, y=values, marker_color='#00d1ff'),
-        go.Bar(name='Benchmark', x=categories, y=[benchmarks.get(c, 50) for c in categories], marker_color='#92fe9d')
+        go.Bar(name='Benchmark', x=categories, y=[benchmarks.get(c, 75) for c in categories], marker_color='#92fe9d')
     ])
     fig_bar.update_layout(
         barmode='group',
@@ -239,17 +251,31 @@ def text_to_speech(text):
 
 # --- Application Flow ---
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
-    print(f"\n--- STEP {interview_step + 1} / {num_q} ---")
+    print(f"\n🚀 [EVENT] Button Clicked - Step: {interview_step}")
+    print(f"DEBUG: resume_pdf_type={type(resume_pdf)}, job_desc_len={len(job_desc) if job_desc else 0}")
     
+    # Handle Gradio 5 file list behavior
+    if isinstance(resume_pdf, list) and len(resume_pdf) > 0:
+        resume_pdf = resume_pdf[0]
+        print(f"DEBUG: Extracted first file from list: {resume_pdf}")
+
     # 1. Initialize summaries on first step
     if interview_step == 0:
+        print("Initializing session...")
         if not resume_pdf:
-            raise gr.Error("⚠️ Please upload your resume (PDF) first.")
+            print("❌ Failure: No Resume Data Received")
+            raise gr.Error("⚠️ Resume file missing. Please re-upload your PDF.")
         if not job_desc or len(job_desc.strip()) < 10:
-            raise gr.Error("⚠️ Please provide a valid job description.")
+            print("❌ Failure: Invalid/Empty Job Description")
+            raise gr.Error("⚠️ Job description is too short or empty.")
             
-        print("Validating inputs...")
-        resume_text = extract_text_from_pdf(resume_pdf)
+        print(f"Validating resume at: {resume_pdf}")
+        try:
+            resume_text = extract_text_from_pdf(resume_pdf)
+            print(f"Extracted {len(resume_text)} characters from PDF.")
+        except Exception as e:
+            print(f"❌ PDF Extraction Error: {e}")
+            raise gr.Error(f"❌ Error reading PDF: {str(e)}")
         r_summary = Resume_Analyst(resume_text)
         if "INVALID" in r_summary.upper():
             raise gr.Error("❌ Access Denied: The uploaded file does not appear to be a valid Resume/CV. Please upload a proper PDF profile.")
@@ -326,235 +352,108 @@ def get_image_base64(image_path):
         return ""
 
 custom_js = """
-function initApp() {
-    console.log("Initializing Premium AI Interview Coach Experience...");
+console.log("🚀 AI Coach UI Logic Initializing...");
+
+window.toggleFeedback = function() {
+    const p = document.getElementById('feedback-panel');
+    if (p) p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+};
+
+window.toggleFAQ = function() {
+    const faq = document.getElementById('faq-chatbot');
+    if (faq) faq.style.display = (faq.style.display === 'none' || faq.style.display === '') ? 'flex' : 'none';
+};
+
+window.closeFAQ = function() {
+    const faq = document.getElementById('faq-chatbot');
+    if (faq) faq.style.display = 'none';
+};
+
+window.showAnswer = function(qId) {
+    const answers = {
+        1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
+        2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
+        3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
+        4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
+        5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools) to help the AI generate relevant questions."
+    };
+    const display = document.getElementById('faq-answer-display');
+    if (!display) return;
     
-    // Force Dark Mode immediately
-    document.body.classList.add('dark');
+    display.innerText = answers[qId];
+    display.style.display = 'block';
+    display.style.opacity = '1';
+};
+
+setInterval(() => {
+    if (!document.body.classList.contains('dark')) document.body.classList.add('dark');
     
-    const splash = document.getElementById('splash-screen');
-    const mainApp = document.getElementById('main-app-content');
-    
-    // Smooth transition logic
-    setTimeout(() => {
-        if (splash) {
-            splash.classList.add('splash-blur-exit');
-            setTimeout(() => {
-                splash.style.display = 'none';
-                if (mainApp) {
-                    mainApp.style.display = 'block';
-                    setTimeout(() => mainApp.style.opacity = '1', 50);
-                }
-                initHR(); 
-            }, 1200);
-        }
-    }, 3800);
-}
-
-function initHR() {
-    const container = document.getElementById('hr-character');
-    const bubble = document.getElementById('speech-bubble');
-    const chatbox = document.getElementById('faq-chatbot');
-    const closeBtn = document.getElementById('close-faq');
-    
-    if (!container || !bubble) return;
-
-    let greetings = [
-        "Hi, I'm your Personalized Interview Coach",
-        "How can I help you?"
-    ];
-    let currentIdx = 0;
-    let lastHoverTime = 0;
-
-    container.addEventListener('mouseenter', () => {
-        const now = Date.now();
-        if (now - lastHoverTime > 500) {
-            bubble.innerText = greetings[currentIdx];
-            currentIdx = (currentIdx + 1) % greetings.length;
-            bubble.style.opacity = '1';
-            lastHoverTime = now;
-        }
-    });
-
-    container.addEventListener('mouseleave', () => {
-        bubble.style.opacity = '0';
-    });
-
-    container.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (chatbox.style.display === "none" || chatbox.style.display === "") {
-            chatbox.style.display = "flex";
-        } else {
-            chatbox.style.display = "none";
-        }
-    });
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            chatbox.style.display = "none";
-        });
+    if (typeof window.hr_tips === 'undefined') {
+        window.hr_tips = ["Hi, I'm your Interview Coach", "How can I help you?"];
+        window.hr_tip_index = 0;
     }
-
-    let currentFAQId = null;
-    window.showAnswer = function(questionId) {
-        const answers = {
-            1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
-            2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
-            3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
-            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
-            5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools) to help the AI generate relevant questions."
+    
+    const hr = document.getElementById('hr-character');
+    const speech = document.getElementById('speech-bubble');
+    if (hr && speech && !hr.dataset.rdy) {
+        hr.onmouseenter = () => {
+            speech.innerText = window.hr_tips[window.hr_tip_index];
+            window.hr_tip_index = (window.hr_tip_index + 1) % window.hr_tips.length;
+            speech.style.opacity = '1';
         };
-        const display = document.getElementById('faq-answer-display');
-        
-        if (currentFAQId === questionId && display.style.display === 'block') {
-            display.style.opacity = '0';
-            setTimeout(() => { display.style.display = 'none'; }, 300);
-            currentFAQId = null;
-        } else {
-            display.innerText = answers[questionId];
-            display.style.display = 'block';
-            setTimeout(() => { display.style.opacity = '1'; }, 10);
-            currentFAQId = questionId;
-        }
-    };
-
-    window.toggleFeedback = function() {
-        const panel = document.getElementById('feedback-panel');
-        if (!panel) return;
-        if (panel.style.display === "none" || panel.style.display === "") {
-            panel.style.display = "flex";
-            initFeedbackAjax(); // Ensure listener is attached
-        } else {
-            panel.style.display = "none";
-        }
-    };
-
-    function initFeedbackAjax() {
-        const form = document.getElementById('feedback-form-element');
-        const status = document.getElementById('feedback-status');
-        if (!form || form.dataset.listenerAttached) return;
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            status.innerText = "Sending...";
-            status.style.color = "#00d2ff";
-
-            try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'Accept': 'application/json' }
-                });
-                if (response.ok) {
-                    status.innerText = "✅ Message Sent Successfully!";
-                    status.style.color = "#92fe9d";
-                    form.reset();
-                    setTimeout(() => { status.innerText = ""; }, 5000);
-                } else {
-                    status.innerText = "❌ Sending failed. Try again.";
-                    status.style.color = "#ff4b4b";
-                }
-            } catch (error) {
-                status.innerText = "❌ Connection error.";
-                status.style.color = "#ff4b4b";
-            }
-        });
-        form.dataset.listenerAttached = "true";
+        hr.onmouseleave = () => speech.style.opacity = '0';
+        hr.dataset.rdy = "true";
     }
-
-    // --- Private Logic: Hide Gradio links on Public URL & Make them Vertical ---
-    const checkPublic = () => {
-        const isPublic = window.location.hostname.includes('gradio.live');
-        const gradioFooters = document.querySelectorAll('footer');
-        
-        gradioFooters.forEach(f => {
-            // My custom footer has a long style string, Gradio's doesn't
-            if (f.innerHTML.includes('Gradio') && !f.innerHTML.includes('Apurba Roy')) {
-                if (isPublic) {
-                    f.style.setProperty('display', 'none', 'important');
-                } else {
-                    f.style.setProperty('display', 'flex', 'important');
-                    f.style.setProperty('flex-direction', 'column', 'important');
-                    f.style.setProperty('align-items', 'flex-start', 'important');
-                    f.style.setProperty('gap', '8px', 'important');
-                    f.style.setProperty('margin-top', '20px', 'important');
-                    f.style.setProperty('padding', '20px', 'important');
-                }
-            }
-        });
-    };
     
-    // Run multiple times because Gradio injects the footer late
-    setTimeout(checkPublic, 1000);
-    setTimeout(checkPublic, 3000);
-    setTimeout(checkPublic, 5000);
-}
-
-const interval = setInterval(() => {
-    if (document.getElementById('splash-screen')) {
-        initApp();
-        clearInterval(interval);
+    const form = document.getElementById('feedback-form-element');
+    const status = document.getElementById('feedback-status');
+    if (form && !form.dataset.rdy) {
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            status.innerText = "Sending...";
+            try {
+                const r = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'} });
+                status.innerText = r.ok ? "✅ Sent!" : "❌ Error";
+                if (r.ok) form.reset();
+            } catch { status.innerText = "❌ Failed"; }
+            setTimeout(() => status.innerText = "", 3000);
+        };
+        form.dataset.rdy = "true";
     }
-}, 500);
+
+    const footer = document.querySelector('footer:not(.custom-app-footer)');
+    if (footer && window.location.hostname.includes('gradio.live')) {
+        footer.style.display = 'none';
+    }
+}, 1000);
 """
 
 custom_css = """
-/* Premium Splash Screen */
-#splash-screen {
+/* Non-blocking Decorative Splash */
+#splash-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    top: 0; left: 0; width: 100%; height: 100%;
     background: #020202;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 99999;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    z-index: 100005;
+    animation: fadeAway 0.8s 2s forwards;
+    pointer-events: none;
 }
-#splash-logo {
-    width: 320px;
-    height: auto;
-    filter: blur(20px);
-    opacity: 0;
-    animation: blurToFocus 2.5s ease-out forwards, pulseGlow 3s infinite alternate;
+@keyframes fadeAway { 
+    from { opacity: 1; visibility: visible; }
+    to { opacity: 0; visibility: hidden; pointer-events: none; height: 0; overflow: hidden; display: none; } 
 }
-@keyframes blurToFocus {
-    0% { filter: blur(30px); opacity: 0; transform: scale(0.9); }
-    100% { filter: blur(0); opacity: 1; transform: scale(1); }
-}
-@keyframes pulseGlow {
-    from { filter: drop-shadow(0 0 10px rgba(0,210,255,0.2)); }
-    to { filter: drop-shadow(0 0 35px rgba(0,210,255,0.7)); }
-}
-.splash-blur-exit {
-    transition: all 1.2s cubic-bezier(0.645, 0.045, 0.355, 1);
-    filter: blur(50px);
-    opacity: 0;
-}
-.splash-title-text {
-    margin-top: 40px;
-    color: #fff;
-    font-family: 'Inter', sans-serif;
-    letter-spacing: 12px;
-    text-transform: uppercase;
-    font-size: 1.3rem;
-    opacity: 0;
-    text-align: center;
-    max-width: 90%;
-    animation: fadeIn 1.5s 1.2s forwards;
-}
-@keyframes fadeIn { to { opacity: 0.8; } }
 
-/* Main App Layout Fixes */
+#splash-logo {
+    width: 280px; height: auto;
+    animation: pulseGlow 2s infinite alternate;
+}
+@keyframes pulseGlow { from { filter: drop-shadow(0 0 5px #00d2ff); } to { filter: drop-shadow(0 0 25px #3a7bd5); } }
+@keyframes fadeIn { to { opacity: 1; visibility: visible; } }
+
 #main-app-content {
-    display: none;
-    opacity: 0;
-    transition: opacity 1s ease-in;
-    padding-top: 10px !important; /* Move content even further upwards */
+    display: block !important;
+    padding-top: 10px !important;
 }
 
 /* Header Spacing */
@@ -791,6 +690,9 @@ custom_css = """
     top: 40px;
     right: 40px;
     z-index: 100000;
+    opacity: 0;
+    visibility: hidden;
+    animation: fadeIn 0.8s 3s forwards;
 }
 #feedback-btn {
     background: rgba(0,210,255,0.1);
@@ -929,17 +831,17 @@ hr_file = os.path.join(base_dir, "hr_guy.png")
 logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
-with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
+with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=f"<script>\n{custom_js}\n</script>") as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
-    # 1. Overlay Elements (Splash Screen ONLY)
+    # 1. Non-blocking Splash Transition
     gr.HTML(f"""
-        <div id="splash-screen">
-            <img id="splash-logo" src="{logo_base64}" alt="AI Coaching">
-            <div class="splash-title-text">Preparing Your Session</div>
+        <div id="splash-overlay">
+            <img id="splash-logo" src="{logo_base64}">
+            <div style="color: #fff; margin-top: 25px; letter-spacing: 5px; font-weight: 300;">INITIALIZING HR COACH...</div>
         </div>
     """)
 
@@ -976,7 +878,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
                 resume_input = gr.File(label="📄 Upload Resume (PDF)", type='filepath')
                 job_desc_input = gr.Textbox(label="💼 Job Description", lines=10, placeholder="Paste the job requirements here...")
                 num_q_input = gr.Slider(label="❓ Questions", minimum=1, maximum=10, value=5, step=1)
-                start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2)
+                start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2, elem_id="start-interview-btn")
             
             with gr.Column():
                 interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False)
@@ -999,7 +901,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
             <div id="faq-chatbot">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div class="chat-title" style="margin-bottom: 0;">🧔 Assistant Coach</div>
-                    <button id="close-faq" style="background: none; border: none; color: #00d2ff; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
+                    <button id="close-faq" onclick="closeFAQ()" style="background: none; border: none; color: #00d2ff; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
                 </div>
                 <button class="faq-btn" onclick="showAnswer(1)">❓ How does it work?</button>
                 <button class="faq-btn" onclick="showAnswer(2)">❓ AI Models used?</button>
@@ -1008,8 +910,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
                 <button class="faq-btn" onclick="showAnswer(5)">❓ How to write the JD?</button>
                 <div id="faq-answer-display"></div>
             </div>
-            <div id="hr-container">
-                <div id="speech-bubble">Hi, I'm your Targeted Interview Coach</div>
+            <div id="hr-container" onclick="toggleFAQ()">
+                <div id="speech-bubble">Hi, I'm your Interview Coach</div>
                 <div id="hr-character">
                     <img src="{hr_base64}" alt="HR Coach">
                 </div>
@@ -1046,6 +948,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, js=custom_js) as demo:
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
         outputs=[interviewer_question, user_answer, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
     )
+
+    # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
     demo.launch(share=True, show_api=False)
