@@ -1,3 +1,9 @@
+---
+title: Interview_Coach
+app_file: app.py
+sdk: gradio
+sdk_version: 5.20.0
+---
 # 🧔 AI Interview Coach: Next-Gen Career Preparation
 
 Elevate your career preparation with a sophisticated, AI-driven interview simulation. The **AI Interview Coach** leverages high-performance Large Language Models (LLMs) and local Speech-to-Text inference to provide a hyper-realistic, low-latency, and insightful practice environment.
