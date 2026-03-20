@@ -241,9 +241,10 @@ def transcribe_audio_faster_whisper(audio_path):
         return ""
 
 def text_to_speech(text):
+    import time
     print(f"Generating TTS for: {text[:50]}...")
     tts = gTTS(text=text, lang='en')
-    output_path = "temp_voice.mp3"
+    output_path = f"temp_voice_{int(time.time())}.mp3"
     tts.save(output_path)
     return output_path
 
@@ -265,11 +266,11 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         if not resume_pdf:
             print("❌ Failure: No Resume Data Received")
             gr.Warning("⚠️ Resume file missing. Please re-upload your PDF.")
-            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, "Evaluation will appear here.", {}, 0, None, None, "")
         if not job_desc or len(job_desc.strip()) < 10:
             print("❌ Failure: Invalid/Empty Job Description")
             gr.Warning("⚠️ Job description is too short or empty.")
-            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, "Evaluation will appear here.", {}, 0, None, None, "")
             
         print(f"Validating resume at: {resume_pdf}")
         try:
@@ -277,20 +278,23 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             print(f"Extracted {len(resume_text)} characters from PDF.")
         except Exception as e:
             print(f"❌ PDF Extraction Error: {e}")
-            gr.Warning(f"❌ Error reading PDF: {str(e)}")
-            return (None, gr.update(), f"❌ Error reading PDF: {str(e)}", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
+            err = f"❌ Error reading PDF: {str(e)}"
+            return (None, gr.update(), err, None, None, "Check PDF upload.", chat_histories, interview_step, resume_summary, job_summary, err)
             
+        # Lighter validation layer - print but dont block
+        print("Analyzing Resume/CV and Job Desc...")
+        # Still do the analysis to get summaries but don't error out unless empty
         r_summary = Resume_Analyst(resume_text)
-        if "INVALID" in r_summary.upper():
-            gr.Warning("❌ Access Denied: The uploaded file does not appear to be a valid Resume/CV.")
-            return (None, gr.update(), "❌ Invalid Resume.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
-            
         j_summary = Job_Description_Expert(job_desc)
-        if "INVALID" in j_summary.upper():
-            gr.Warning("❌ Access Denied: The Job Description provided is invalid or too brief.")
-            return (None, gr.update(), "❌ Invalid Job Description.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, latest_question_text)
-            
-        print("Initialization successful.")
+        
+        if len(resume_text) < 10:
+            gr.Warning("⚠️ Resume seems empty. Interview might be less accurate.")
+        if len(job_desc) < 10:
+            gr.Warning("⚠️ Job Description is very short.")
+        
+        print(f"Session started. Resume chars: {len(resume_text)}, JD: {len(job_desc)}")
+        
+        print(f"Initialization Success. Resume characters: {len(resume_text)}, JD characters: {len(job_desc)}")
         resume_summary = r_summary
         job_summary = j_summary
         chat_histories = {}
@@ -326,7 +330,6 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
     audio_file = text_to_speech(question)
     
     button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
-    
     return (audio_file, gr.update(value=button_label, interactive=True), 
             "Evaluation will appear when the interview ends.", None, None, "",
             chat_histories, interview_step + 1, resume_summary, job_summary, question)
@@ -972,7 +975,9 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2, elem_id="start-interview-btn")
             
             with gr.Column():
-                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False)
+                question_display = gr.Markdown("### 🤖 Waiting for interview to start...", elem_id="question-display")
+                interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, autoplay=True)
+                dummy_mic_status = gr.Textbox(visible=False, elem_id="dummy-mic-status")
                 user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
@@ -1037,15 +1042,17 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        js="function() { if(window.startInterviewTimer) { window.startInterviewTimer(); } return arguments; }"
-    ).then(
-        fn=lambda: None,
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+    )
+
+    user_answer.start_recording(
+        fn=lambda: "started",
         inputs=[],
-        outputs=[user_answer]
+        outputs=[dummy_mic_status],
+        js="function() { if(window.startInterviewTimer) { window.startInterviewTimer(); } return []; }"
     )
 
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
-    demo.launch(share=True, show_api=False)
+    demo.launch(show_error=True)
