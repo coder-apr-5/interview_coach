@@ -29,14 +29,19 @@ def get_llm():
     llm_client = Groq(api_key=api_key)
     return llm_client
 
-# --- Global Model Loading (Avoid First-Request Delay) ---
+# --- Global Model Loading (Lazy) ---
 WHISPER_MODEL = None
-print("Pre-loading Whisper model (tiny)...")
-try:
-    WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
-    print("Whisper ready.")
-except Exception as e:
-    print(f"Whisper preload failed: {e}")
+
+def get_whisper():
+    global WHISPER_MODEL
+    if WHISPER_MODEL is None:
+        print("Loading Whisper model (tiny)...")
+        try:
+            WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+            print("Whisper ready.")
+        except Exception as e:
+            print(f"Whisper load failed: {e}")
+    return WHISPER_MODEL
 
 def chat_with_llm(role, content, json_mode=False):
     client = get_llm()
@@ -54,12 +59,18 @@ def chat_with_llm(role, content, json_mode=False):
                 model="llama-3.3-70b-versatile",
                 response_format=response_format
             )
-            return chat_completion.choices[0].message.content
+            res = chat_completion.choices[0].message.content
+            if not res or not res.strip():
+                print(f"⚠️ Warning: LLM returned empty response for role: {role}")
+                continue
+            return res
         except Exception as e:
+            print(f"❌ Groq API Error (Attempt {attempt+1}): {e}")
             if "rate_limit" in str(e).lower() and attempt < 2:
                 time.sleep(2)
                 continue
             return f"Error: {str(e)}"
+    return "Error: Maximum retries reached. Please check your API key or connectivity."
 
 # --- NLP / Interview Logic ---
 def extract_text_from_pdf(pdf_path):
@@ -98,16 +109,32 @@ def Job_Description_Expert(job_desc):
     return response.strip()
 
 def Interviewer(chat_histories, resume_summary, job_summary):
-    prompt = f"""
-    Context:
-    Resume: {resume_summary}
-    Job: {job_summary}
-    History: {chat_histories}
+    if not chat_histories:
+        prompt = f"""
+        Context:
+        Resume Summary: {resume_summary}
+        Job Requirements: {job_summary}
+        
+        Task:
+        Introduce yourself as an AI HR Consultant. Based on the candidate's resume and the job requirements, ask a strong, relevant FIRST question to start the interview.
+        Keep it professional, warm, and engaging. ONE question only.
+        """
+        role = "Professional HR Interviewer (Opening Session)"
+    else:
+        prompt = f"""
+        Context:
+        Resume: {resume_summary}
+        Job: {job_summary}
+        History: {chat_histories}
+        
+        Task:
+        Based on the interview history and the candidate's profile, ask ONE insightful follow-up question. 
+        Deep dive into their previous answers or probe a specific skill mentioned in their resume.
+        Keep it conversational and professional. ONE question only.
+        """
+        role = "Professional HR Interviewer (Follow-up Session)"
     
-    Act as a professional interviewer. Ask ONE insightful follow-up question based on the history or the candidate's profile. 
-    Keep it conversational and professional.
-    """
-    return chat_with_llm("Professional Interviewer", prompt)
+    return chat_with_llm(role, prompt)
 
 def Evaluator(chat_histories, job_summary):
     prompt = f"""
@@ -221,19 +248,25 @@ def create_performance_charts(scores, benchmarks=None):
     return fig_radar, fig_bar
 
 # --- Voice / Audio ---
+def resolve_path(obj):
+    if obj is None: return None
+    if isinstance(obj, str): return obj
+    if isinstance(obj, list) and len(obj) > 0: return resolve_path(obj[0])
+    if hasattr(obj, 'path'): return obj.path # Gradio 5 FileData
+    if hasattr(obj, 'name'): return obj.name # Gradio 3/4
+    if isinstance(obj, dict): return obj.get('path') or obj.get('name')
+    return str(obj)
+
 def transcribe_audio_faster_whisper(audio_path):
-    global WHISPER_MODEL
+    audio_path = resolve_path(audio_path)
     if not audio_path or not os.path.exists(audio_path): return ""
     
-    # Fallback if preload failed
-    if WHISPER_MODEL is None:
-        try:
-            WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
-        except:
-            return "Speech recognition error."
+    model = get_whisper()
+    if model is None:
+        return "Speech recognition error."
     
     try:
-        segments, info = WHISPER_MODEL.transcribe(audio_path, beam_size=5)
+        segments, info = model.transcribe(audio_path, beam_size=5)
         text = " ".join([segment.text for segment in segments])
         return text.strip()
     except Exception as e:
@@ -248,92 +281,96 @@ def text_to_speech(text):
     tts.save(output_path)
     return output_path
 
-    return output_path
-
-# --- Application Flow ---
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
     print(f"\n🚀 [EVENT] Button Clicked - Step: {interview_step}")
-    print(f"DEBUG: resume_pdf_type={type(resume_pdf)}, job_desc_len={len(job_desc) if job_desc else 0}")
+    gr.Info("Processing... Please wait.")
     
-    # Handle Gradio 5 file list behavior
-    if isinstance(resume_pdf, list) and len(resume_pdf) > 0:
-        resume_pdf = resume_pdf[0]
-        print(f"DEBUG: Extracted first file from list: {resume_pdf}")
-
-    # 1. Initialize summaries on first step
+    # Robust path resolution
+    resume_path = resolve_path(resume_pdf)
+    user_audio_path = resolve_path(user_audio)
+    
+    # 1. Initialization (Step 0)
     if interview_step == 0:
         print("Initializing session...")
-        if not resume_pdf:
-            print("❌ Failure: No Resume Data Received")
-            gr.Warning("⚠️ Resume file missing. Please re-upload your PDF.")
-            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Please upload your resume first.", "⚠️ Error: Please upload your resume first.")
+        if not resume_path:
+            gr.Warning("⚠️ Please upload your resume PDF.")
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Resume missing.", "⚠️ Error: Resume missing.")
+        
         if not job_desc or len(job_desc.strip()) < 10:
-            print("❌ Failure: Invalid/Empty Job Description")
-            gr.Warning("⚠️ Job description is too short or empty.")
-            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Job description is too short.", "⚠️ Error: Job description is too short.")
+            gr.Warning("⚠️ Please provide a clear Job Description.")
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: JD too short.", "⚠️ Error: JD too short.")
             
-        print(f"Validating resume at: {resume_pdf}")
         try:
-            resume_text = extract_text_from_pdf(resume_pdf)
-            print(f"Extracted {len(resume_text)} characters from PDF.")
+            resume_text = extract_text_from_pdf(resume_path)
+            if not resume_text.strip(): raise ValueError("Empty PDF content.")
+            
+            # Parallel Analysis
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor() as executor:
+                f_resume = executor.submit(Resume_Analyst, resume_text)
+                f_job = executor.submit(Job_Description_Expert, job_desc)
+                
+                r_summary = f_resume.result()
+                j_summary = f_job.result()
+            
+            if "INVALID" in r_summary.upper():
+                gr.Warning("⚠️ Your resume seems invalid or unreadable.")
+                return (None, gr.update(), "⚠️ Invalid Resume format.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid Resume.", "### 🧔 HR Coach: \n⚠️ Your resume was not recognized. Please upload a valid PDF CV.")
+
+            if "INVALID" in j_summary.upper():
+                gr.Warning("⚠️ The Job Description seems invalid.")
+                return (None, gr.update(), "⚠️ Invalid Job Description.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid JD.", "### 🧔 HR Coach: \n⚠️ Job description was not recognized. Please provide more details.")
+
+            resume_summary = r_summary
+            job_summary = j_summary
+            chat_histories = {}
+            print("Session Success.")
         except Exception as e:
-            print(f"❌ PDF Extraction Error: {e}")
-            err = f"❌ Error reading PDF: {str(e)}"
+            err = f"⚠️ Analysis failed: {str(e)}"
+            print(f"Error: {err}")
             return (None, gr.update(), err, None, None, f"### {err}", chat_histories, interview_step, resume_summary, job_summary, err, err)
             
-        # Lighter validation layer - print but dont block
-        print("Analyzing Resume/CV and Job Desc...")
-        # Still do the analysis to get summaries but don't error out unless empty
-        r_summary = Resume_Analyst(resume_text)
-        j_summary = Job_Description_Expert(job_desc)
-        
-        if len(resume_text) < 10:
-            gr.Warning("⚠️ Resume seems empty. Interview might be less accurate.")
-        if len(job_desc) < 10:
-            gr.Warning("⚠️ Job Description is very short.")
-        
-        print(f"Session started. Resume chars: {len(resume_text)}, JD: {len(job_desc)}")
-        
-        print(f"Initialization Success. Resume characters: {len(resume_text)}, JD characters: {len(job_desc)}")
-        resume_summary = r_summary
-        job_summary = j_summary
-        chat_histories = {}
-        
-    # 2. Process user's answer from previous question (if any)
-    if user_audio and latest_question_text:
-        print(f"User answered. Path: {user_audio}")
-        answer_text = transcribe_audio_faster_whisper(user_audio)
-        print(f"Transcribed: {answer_text}")
-        chat_histories[latest_question_text] = answer_text
+    # 2. Process Answer
+    if interview_step > 0 and user_audio_path and latest_question_text:
+        try:
+            answer_text = transcribe_audio_faster_whisper(user_audio_path)
+            if answer_text.strip():
+                chat_histories[latest_question_text] = answer_text
+        except Exception as e:
+            print(f"Voice error: {e}")
     
-    # Check if interview is complete
-    if interview_step >= num_q:
-        print(f"Interview complete after {interview_step} questions. Evaluating...")
-        eval_data = Evaluator(chat_histories, job_summary)
-        print("Evaluation received.")
-        radar, bar = create_performance_charts(eval_data['scores'], eval_data['benchmarks'])
-        print("Charts created.")
-        
-        correction_text = f"### 💡 Correction Needed:\n{eval_data.get('correction_needed', 'Continue practicing to improve your scores.')}"
-        
-        # 4. Generate Spoken Conclusion
-        conclusion_text = eval_data.get('spoken_conclusion', "The interview is now complete. Thank you for your time.")
-        conclusion_audio = text_to_speech(conclusion_text)
+    # 3. Check for Completion
+    if interview_step >= int(num_q) and interview_step > 0:
+        gr.Info("Generating final evaluation...")
+        try:
+            eval_data = Evaluator(chat_histories, job_summary)
+            radar, bar = create_performance_charts(eval_data['scores'], eval_data['benchmarks'])
+            conclusion_audio = text_to_speech(eval_data.get('spoken_conclusion', 'Thank you.'))
 
-        return (conclusion_audio, gr.update(value="✅ Interview Complete", interactive=False), 
-                eval_data['text_evaluation'], radar, bar, correction_text,
-                chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete! \nThank you for your time.")
+            return (conclusion_audio, gr.update(value="✅ Complete", interactive=False), 
+                    eval_data['text_evaluation'], radar, bar, eval_data.get('correction_needed', ''),
+                    chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete!")
+        except Exception as e:
+            return (None, gr.update(), f"Evaluation error: {e}", None, None, "", chat_histories, interview_step, resume_summary, job_summary, "", "### ❌ Evaluation Failed.")
 
-    # 3. Generate and speak next question
-    print("Generating next question...")
-    question = Interviewer(chat_histories, resume_summary, job_summary)
-    audio_file = text_to_speech(question)
-    
-    button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
-    q_md = f"### 🧔 HR Coach:\n{question}"
-    return (audio_file, gr.update(value=button_label, interactive=True), 
-            "Evaluation will appear when the interview ends.", None, None, "",
-            chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md)
+    # 4. Generate Next Question
+    try:
+        gr.Info(f"Generating Question {interview_step + 1}...")
+        question = Interviewer(chat_histories, resume_summary or "Candidate", job_summary or "Role")
+        
+        if "Error:" in question:
+            return (None, gr.update(), question, None, None, "", chat_histories, interview_step, resume_summary, job_summary, question, f"### 🧔 HR Coach: \n⚠️ {question}")
+
+        audio_file = text_to_speech(question)
+        button_label = f"Submit Answer & Next ({interview_step + 1}/{int(num_q)})"
+        q_md = f"### 🧔 HR Coach:\n{question}"
+        
+        return (audio_file, gr.update(value=button_label, interactive=True), 
+                "Evaluation will appear at the end.", None, None, "",
+                chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md)
+    except Exception as e:
+        err = f"Generation error: {e}"
+        return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}")
 
 # --- Global Data for Viewer Count ---
 VISITOR_SESSIONS = set()
@@ -365,15 +402,17 @@ custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
 
 window.addEventListener('load', () => {
-    // Specifically wait 4 full seconds AFTER the Hugging Face iframe fully loads
+    // Immediate fallback to reveal app
     setTimeout(() => {
         const splash = document.getElementById('splash-overlay');
         if (splash) {
             splash.style.opacity = '0';
-            splash.style.visibility = 'hidden';
-            setTimeout(() => { splash.style.display = 'none'; }, 800);
+            setTimeout(() => { 
+                splash.style.display = 'none'; 
+                console.log("✅ Splash hidden.");
+            }, 500);
         }
-    }, 4000);
+    }, 1200);
 });
 
 window.toggleFeedback = function() {
@@ -392,86 +431,36 @@ window.closeFAQ = function() {
 };
 
 window.showAnswer = function(qId) {
-    const answers = {
-        1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
-        2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
-        3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
-        4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
-        5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools) to help the AI generate relevant questions."
-    };
-    const display = document.getElementById('faq-answer-display');
-    if (!display) return;
-    
-    if (window.currentFAQId === qId && display.style.display === 'block') {
-        display.style.opacity = '0';
-        setTimeout(() => { display.style.display = 'none'; }, 300);
-        window.currentFAQId = null;
-    } else {
+    try {
+        const answers = {
+            1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
+            2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
+            3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
+            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
+            5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools)."
+        };
+        const display = document.getElementById('faq-answer-display');
+        if (!display) return;
+        
         display.innerText = answers[qId];
         display.style.display = 'block';
-        setTimeout(() => { display.style.opacity = '1'; }, 10);
-        window.currentFAQId = qId;
-    }
-};
-
-window.interviewTime = 0;
-window.interviewTimer = null;
-window.startInterviewTimer = function() {
-    if (!window.interviewTimer) {
-        window.interviewTimer = setInterval(() => {
-            window.interviewTime++;
-            const m = Math.floor(window.interviewTime / 60).toString().padStart(2, '0');
-            const s = (window.interviewTime % 60).toString().padStart(2, '0');
-            const el = document.getElementById('interview-timer-display');
-            if(el) {
-                el.innerHTML = `⏱️ Elapsed: <span style="color:#00d2ff">${m}:${s}</span>`;
-            }
-        }, 1000);
-    }
-    return [];
+        display.style.opacity = '1';
+    } catch(e) { console.error("FAQ Error:", e); }
 };
 
 setInterval(() => {
-    if (!document.body.classList.contains('dark')) document.body.classList.add('dark');
-    
-    if (typeof window.hr_tips === 'undefined') {
-        window.hr_tips = ["Hi, I'm your Personalized Interview Coach", "How can I help you?"];
-        window.hr_tip_index = 0;
-    }
-    
-    const hr = document.getElementById('hr-character');
-    const speech = document.getElementById('speech-bubble');
-    if (hr && speech && !hr.dataset.rdy) {
-        hr.onmouseenter = () => {
-            speech.innerText = window.hr_tips[window.hr_tip_index];
-            window.hr_tip_index = (window.hr_tip_index + 1) % window.hr_tips.length;
-            speech.style.opacity = '1';
-        };
-        hr.onmouseleave = () => speech.style.opacity = '0';
-        hr.dataset.rdy = "true";
-    }
-    
-    const form = document.getElementById('feedback-form-element');
-    const status = document.getElementById('feedback-status');
-    if (form && !form.dataset.rdy) {
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            status.innerText = "Sending...";
-            try {
-                const r = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'} });
-                status.innerText = r.ok ? "✅ Sent!" : "❌ Error";
-                if (r.ok) form.reset();
-            } catch { status.innerText = "❌ Failed"; }
-            setTimeout(() => status.innerText = "", 3000);
-        };
-        form.dataset.rdy = "true";
-    }
-
-    const footer = document.querySelector('footer:not(.custom-app-footer)');
-    if (footer && window.location.hostname.includes('gradio.live')) {
-        footer.style.display = 'none';
-    }
-}, 1000);
+    try {
+        if (!document.body.classList.contains('dark')) document.body.classList.add('dark');
+        
+        const hr = document.getElementById('hr-character');
+        const speech = document.getElementById('speech-bubble');
+        if (hr && speech && !hr.dataset.rdy) {
+            hr.onmouseenter = () => speech.style.opacity = '1';
+            hr.onmouseleave = () => speech.style.opacity = '0';
+            hr.dataset.rdy = "true";
+        }
+    } catch(e) {}
+}, 2000);
 """
 
 custom_css = """
@@ -976,7 +965,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2, elem_id="start-interview-btn")
             
             with gr.Column():
-                question_display = gr.Markdown("### 🤖 Waiting for interview to start...", elem_id="question-display")
+                question_display = gr.Markdown("", elem_id="question-display")
                 interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, autoplay=True)
                 dummy_mic_status = gr.Textbox(visible=False, elem_id="dummy-mic-status")
                 user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
@@ -985,12 +974,12 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
         with gr.Tabs(elem_classes="tabs-container") as tabs:
             with gr.Tab("📝 Detailed Evaluation"):
                 gr.HTML("<div style='margin-bottom: 20px; font-weight: bold; color: #00d2ff; text-transform: uppercase; letter-spacing: 2px;'>HR Feedback & Roadmap</div>")
-                evaluation_textbox = gr.Markdown("The evaluation results will appear here after the interview ends.", elem_classes="evaluation-md-box")
+                evaluation_textbox = gr.Markdown("", elem_classes="evaluation-md-box")
             with gr.Tab("📊 Performance Analytics"):
                 with gr.Row(elem_classes="analytics-responsive-row"):
                     radar_plot = gr.Plot(label="Skill Competency", elem_classes="analytics-plot")
                     bar_plot = gr.Plot(label="Peer Benchmarks", elem_classes="analytics-plot")
-                correction_md = gr.Markdown("### 💡 Correction Needed\nYour analysis will appear here after the interview is complete.", elem_id="correction-needed-md")
+                correction_md = gr.Markdown("", elem_id="correction-needed-md")
 
     # 3. Interactive HR Character Overlay
     gr.HTML(f"""
@@ -1052,7 +1041,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
         outputs=[dummy_mic_status],
         js="function() { if(window.startInterviewTimer) { window.startInterviewTimer(); } return []; }"
     )
-
+    
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
