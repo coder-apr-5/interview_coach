@@ -266,11 +266,11 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         if not resume_pdf:
             print("❌ Failure: No Resume Data Received")
             gr.Warning("⚠️ Resume file missing. Please re-upload your PDF.")
-            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Please upload your resume first.")
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Please upload your resume first.", "⚠️ Error: Please upload your resume first.")
         if not job_desc or len(job_desc.strip()) < 10:
             print("❌ Failure: Invalid/Empty Job Description")
             gr.Warning("⚠️ Job description is too short or empty.")
-            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Job description is too short.")
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Job description is too short.", "⚠️ Error: Job description is too short.")
             
         print(f"Validating resume at: {resume_pdf}")
         try:
@@ -280,7 +280,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             print(f"❌ PDF Extraction Error: {e}")
             err = f"❌ Error reading PDF: {str(e)}"
             # Returns: interviewer_audio, start_btn, output_text, radar_chart, bar_chart, correction_text, chat_histories, interview_step, resume_summary, job_summary, latest_question_text
-            return (None, gr.update(), err, None, None, f"### {err}", chat_histories, interview_step, resume_summary, job_summary, err)
+            return (None, gr.update(), err, None, None, f"### {err}", chat_histories, interview_step, resume_summary, job_summary, err, err)
             
         # Lighter validation layer - print but dont block
         print("Analyzing Resume/CV and Job Desc...")
@@ -323,7 +323,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
 
         return (conclusion_audio, gr.update(value="✅ Interview Complete", interactive=False), 
                 eval_data['text_evaluation'], radar, bar, correction_text,
-                chat_histories, interview_step + 1, resume_summary, job_summary, "")
+                chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete! \nThank you for your time.")
 
     # 3. Generate and speak next question
     print("Generating next question...")
@@ -331,9 +331,10 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
     audio_file = text_to_speech(question)
     
     button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q})"
+    q_md = f"### 🧔 HR Coach:\n{question}"
     return (audio_file, gr.update(value=button_label, interactive=True), 
             "Evaluation will appear when the interview ends.", None, None, "",
-            chat_histories, interview_step + 1, resume_summary, job_summary, question)
+            chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md)
 
 # --- Global Data for Viewer Count ---
 VISITOR_SESSIONS = set()
@@ -1043,7 +1044,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state]
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, question_display]
     )
 
     user_answer.start_recording(
