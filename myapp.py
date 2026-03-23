@@ -61,16 +61,13 @@ def chat_with_llm(role, content, json_mode=False):
             )
             res = chat_completion.choices[0].message.content
             if not res or not res.strip():
-                print(f"⚠️ Warning: LLM returned empty response for role: {role}")
                 continue
             return res
         except Exception as e:
-            print(f"❌ Groq API Error (Attempt {attempt+1}): {e}")
-            if "rate_limit" in str(e).lower() and attempt < 2:
-                time.sleep(2)
-                continue
-            return f"Error: {str(e)}"
-    return "Error: Maximum retries reached. Please check your API key or connectivity."
+            print(f"❌ Groq Error: {e}")
+            if attempt < 2: time.sleep(2)
+            else: return f"Error: {str(e)}"
+    return "Error: LLM timeout."
 
 # --- NLP / Interview Logic ---
 def extract_text_from_pdf(pdf_path):
@@ -252,18 +249,12 @@ def resolve_path(obj):
     if obj is None: return None
     if isinstance(obj, str): return obj
     if isinstance(obj, list) and len(obj) > 0: return resolve_path(obj[0])
-    
-    # Gradio 5 FileData or dictionary
     if hasattr(obj, 'path'): return obj.path
-    if isinstance(obj, dict):
-        return obj.get('path') or obj.get('name')
-    
-    # Fallback for other objects that might have a path/name
+    if isinstance(obj, dict): return obj.get('path') or obj.get('name')
     try:
         if hasattr(obj, 'name'): return obj.name
     except:
         pass
-        
     return str(obj)
 
 def transcribe_audio_faster_whisper(audio_path):
@@ -310,31 +301,21 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             
         try:
             resume_text = extract_text_from_pdf(resume_path)
-            if not resume_text or not resume_text.strip(): 
-                raise ValueError("Could not extract text from the PDF. Please ensure it's not encrypted or empty.")
+            if not resume_text.strip(): raise ValueError("PDF is empty or unreadable.")
             
-            # Sequential Analysis for stability
-            print("Analyzing Resume...")
             r_summary = Resume_Analyst(resume_text)
-            print("Analyzing Job Description..." if job_desc else "")
-            j_summary = Job_Description_Expert(job_desc) if job_desc else "General Role"
+            j_summary = Job_Description_Expert(job_desc)
             
             if "INVALID" in str(r_summary).upper():
-                gr.Warning("⚠️ Your resume seems invalid or unreadable.")
-                return (None, gr.update(), "⚠️ Invalid Resume format.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid Resume.", "### 🧔 HR Coach: \n⚠️ Your resume was not recognized. Please upload a valid PDF CV.")
-
+                return (None, gr.update(), "Invalid Resume.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Resume PDF.")
             if "INVALID" in str(j_summary).upper():
-                gr.Warning("⚠️ The Job Description seems invalid.")
-                return (None, gr.update(), "⚠️ Invalid Job Description.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid JD.", "### 🧔 HR Coach: \n⚠️ Job description was not recognized. Please provide more details.")
+                return (None, gr.update(), "Invalid JD.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Job Description.")
 
-            resume_summary = r_summary
-            job_summary = j_summary
+            resume_summary, job_summary = r_summary, j_summary
             chat_histories = {}
             print("Session Success.")
         except Exception as e:
-            err = f"⚠️ Analysis failed: {str(e)}"
-            print(f"Error: {err}")
-            return (None, gr.update(), err, None, None, f"### {err}", chat_histories, interview_step, resume_summary, job_summary, err, err)
+            return (None, gr.update(), f"Error: {e}", None, None, "", chat_histories, interview_step, None, None, "", f"### ❌ {e}")
             
     # 2. Process Answer
     if interview_step > 0 and user_audio_path and latest_question_text:
