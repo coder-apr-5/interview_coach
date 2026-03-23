@@ -252,9 +252,18 @@ def resolve_path(obj):
     if obj is None: return None
     if isinstance(obj, str): return obj
     if isinstance(obj, list) and len(obj) > 0: return resolve_path(obj[0])
-    if hasattr(obj, 'path'): return obj.path # Gradio 5 FileData
-    if hasattr(obj, 'name'): return obj.name # Gradio 3/4
-    if isinstance(obj, dict): return obj.get('path') or obj.get('name')
+    
+    # Gradio 5 FileData or dictionary
+    if hasattr(obj, 'path'): return obj.path
+    if isinstance(obj, dict):
+        return obj.get('path') or obj.get('name')
+    
+    # Fallback for other objects that might have a path/name
+    try:
+        if hasattr(obj, 'name'): return obj.name
+    except:
+        pass
+        
     return str(obj)
 
 def transcribe_audio_faster_whisper(audio_path):
@@ -302,22 +311,20 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             
         try:
             resume_text = extract_text_from_pdf(resume_path)
-            if not resume_text.strip(): raise ValueError("Empty PDF content.")
+            if not resume_text or not resume_text.strip(): 
+                raise ValueError("Could not extract text from the PDF. Please ensure it's not encrypted or empty.")
             
-            # Parallel Analysis
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor() as executor:
-                f_resume = executor.submit(Resume_Analyst, resume_text)
-                f_job = executor.submit(Job_Description_Expert, job_desc)
-                
-                r_summary = f_resume.result()
-                j_summary = f_job.result()
+            # Sequential Analysis for stability
+            print("Analyzing Resume...")
+            r_summary = Resume_Analyst(resume_text)
+            print("Analyzing Job Description..." if job_desc else "")
+            j_summary = Job_Description_Expert(job_desc) if job_desc else "General Role"
             
-            if "INVALID" in r_summary.upper():
+            if "INVALID" in str(r_summary).upper():
                 gr.Warning("⚠️ Your resume seems invalid or unreadable.")
                 return (None, gr.update(), "⚠️ Invalid Resume format.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid Resume.", "### 🧔 HR Coach: \n⚠️ Your resume was not recognized. Please upload a valid PDF CV.")
 
-            if "INVALID" in j_summary.upper():
+            if "INVALID" in str(j_summary).upper():
                 gr.Warning("⚠️ The Job Description seems invalid.")
                 return (None, gr.update(), "⚠️ Invalid Job Description.", None, None, gr.update(), chat_histories, interview_step, None, None, "⚠️ Error: Invalid JD.", "### 🧔 HR Coach: \n⚠️ Job description was not recognized. Please provide more details.")
 
@@ -398,8 +405,11 @@ def get_image_base64(image_path):
         print(f"❌ Error encoding image {image_path}: {e}")
         return ""
 
-custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
+
+window.startInterviewTimer = function() {
+    console.log("⏱️ Interview started...");
+};
 
 window.addEventListener('load', () => {
     // Immediate fallback to reveal app
@@ -455,8 +465,8 @@ setInterval(() => {
         const hr = document.getElementById('hr-character');
         const speech = document.getElementById('speech-bubble');
         if (hr && speech && !hr.dataset.rdy) {
-            hr.onmouseenter = () => speech.style.opacity = '1';
-            hr.onmouseleave = () => speech.style.opacity = '0';
+            hr.onmouseenter = () => { if(speech) speech.style.opacity = '1'; };
+            hr.onmouseleave = () => { if(speech) speech.style.opacity = '0'; };
             hr.dataset.rdy = "true";
         }
     } catch(e) {}
