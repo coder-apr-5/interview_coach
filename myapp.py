@@ -291,8 +291,7 @@ def text_to_speech(text):
     return output_path
 
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
-    print(f"\n🚀 [EVENT] Button Clicked - Step: {interview_step}")
-    gr.Info("Processing... Please wait.")
+    print(f"\n🚀 [EVENT] Button Clicked - Current Step: {interview_step}")
     
     # Robust path resolution
     resume_path = resolve_path(resume_pdf)
@@ -362,7 +361,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
 
     # 4. Generate Next Question
     try:
-        gr.Info(f"Generating Question {interview_step + 1}...")
+        print(f"Generating Question {interview_step + 1}...")
         question = Interviewer(chat_histories, resume_summary or "Candidate", job_summary or "Role")
         
         if "Error:" in question:
