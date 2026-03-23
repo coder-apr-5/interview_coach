@@ -25,7 +25,7 @@ def get_llm():
     global llm_client
     if llm_client: return llm_client
     api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key: raise gr.Error("GROQ_API_KEY is missing!")
+    if not api_key: raise RuntimeError("GROQ_API_KEY is missing! Please configure the API Key in Hugging Face Secrets.")
     llm_client = Groq(api_key=api_key)
     return llm_client
 
@@ -275,11 +275,21 @@ def transcribe_audio_faster_whisper(audio_path):
 
 def text_to_speech(text):
     import time
-    print(f"Generating TTS for: {text[:50]}...")
-    tts = gTTS(text=text, lang='en')
-    output_path = f"temp_voice_{int(time.time())}.mp3"
-    tts.save(output_path)
-    return output_path
+    try:
+        print(f"Generating TTS for: {text[:50]}...")
+        tts = gTTS(text=text, lang='en')
+        
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        audio_cache_dir = os.path.join(base_dir, "audio_cache")
+        if not os.path.exists(audio_cache_dir):
+            os.makedirs(audio_cache_dir)
+            
+        output_path = os.path.join(audio_cache_dir, f"voice_{int(time.time()*1000)}.mp3")
+        tts.save(output_path)
+        return output_path
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return None
 
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
     print(f"\n🚀 [EVENT] Button Clicked - Current Step: {interview_step}")
@@ -385,6 +395,7 @@ def get_image_base64(image_path):
         print(f"❌ Error encoding image {image_path}: {e}")
         return ""
 
+custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
 
 window.startInterviewTimer = function() {
