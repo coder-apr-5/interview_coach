@@ -5,3 +5,5 @@ gradio>=5.15.0
 python-dotenv
 groq
 plotly
+fastapi
+uvicorn

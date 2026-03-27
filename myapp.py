@@ -275,16 +275,13 @@ def transcribe_audio_faster_whisper(audio_path):
 
 def text_to_speech(text):
     import time
+    import tempfile
     try:
         print(f"Generating TTS for: {text[:50]}...")
         tts = gTTS(text=text, lang='en')
         
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        audio_cache_dir = os.path.join(base_dir, "audio_cache")
-        if not os.path.exists(audio_cache_dir):
-            os.makedirs(audio_cache_dir)
-            
-        output_path = os.path.join(audio_cache_dir, f"voice_{int(time.time()*1000)}.mp3")
+        temp_dir = tempfile.gettempdir()
+        output_path = os.path.join(temp_dir, f"voice_{int(time.time()*1000)}.mp3")
         tts.save(output_path)
         return output_path
     except Exception as e:

@@ -1,0 +1,17 @@
+{
+  "name": "AI Interview Coach",
+  "short_name": "AICoach",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#00d2ff",
+  "description": "Your Personalized AI Interview Coach",
+  "icons": [
+    {
+      "src": "./logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
