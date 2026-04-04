@@ -31,3 +31,9 @@ Thumbs.db
 # Any gradio caching / models caching
 gradio_cache/
 .cache
+
+venv/
+__pycache__/
+.venv/
+.gradio/
+*.pyc
