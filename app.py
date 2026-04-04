@@ -16,9 +16,6 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-from fastapi import FastAPI, Response
-from fastapi.responses import FileResponse
-import uvicorn
 
 # --- Lazy LLM initialization ---
 llm_client = None
@@ -67,7 +64,7 @@ def chat_with_llm(role, content, json_mode=False):
                 continue
             return res
         except Exception as e:
-            print(f"Error: Groq error: {e}")
+            print(f"❌ Groq Error: {e}")
             if attempt < 2: time.sleep(2)
             else: return f"Error: {str(e)}"
     return "Error: LLM timeout."
@@ -116,8 +113,7 @@ def Interviewer(chat_histories, resume_summary, job_summary):
         Job Requirements: {job_summary}
         
         Task:
-        Introduce yourself as an AI HR Consultant. Do NOT provide yourself with a name (e.g., do not say 'Hi, I am Rachael'). 
-        Based on the candidate's resume and the job requirements, ask a strong, relevant FIRST question to start the interview.
+        Introduce yourself as an AI HR Consultant. Based on the candidate's resume and the job requirements, ask a strong, relevant FIRST question to start the interview.
         Keep it professional, warm, and engaging. ONE question only.
         """
         role = "Professional HR Interviewer (Opening Session)"
@@ -129,8 +125,7 @@ def Interviewer(chat_histories, resume_summary, job_summary):
         History: {chat_histories}
         
         Task:
-        Based on the interview history and the candidate's profile, ask ONE insightful follow-up question.
-        Do NOT use any name for yourself (e.g., do not say 'Rachael' or any other name).
+        Based on the interview history and the candidate's profile, ask ONE insightful follow-up question. 
         Deep dive into their previous answers or probe a specific skill mentioned in their resume.
         Keep it conversational and professional. ONE question only.
         """
@@ -294,7 +289,7 @@ def text_to_speech(text):
         return None
 
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
-    print(f"\n[EVENT] Button Clicked - Current Step: {interview_step}")
+    print(f"\n🚀 [EVENT] Button Clicked - Current Step: {interview_step}")
     
     # Robust path resolution
     resume_path = resolve_path(resume_pdf)
@@ -305,11 +300,11 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         print("Initializing session...")
         if not resume_path:
             gr.Warning("⚠️ Please upload your resume PDF.")
-            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Resume missing.", "⚠️ Error: Resume missing.", gr.update(interactive=False))
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Resume missing.", "⚠️ Error: Resume missing.")
         
         if not job_desc or len(job_desc.strip()) < 10:
             gr.Warning("⚠️ Please provide a clear Job Description.")
-            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: JD too short.", "⚠️ Error: JD too short.", gr.update(interactive=False))
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: JD too short.", "⚠️ Error: JD too short.")
             
         try:
             resume_text = extract_text_from_pdf(resume_path)
@@ -319,15 +314,15 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             j_summary = Job_Description_Expert(job_desc)
             
             if "INVALID" in str(r_summary).upper():
-                return (None, gr.update(), "Invalid Resume.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Resume PDF.", gr.update(interactive=False))
+                return (None, gr.update(), "Invalid Resume.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Resume PDF.")
             if "INVALID" in str(j_summary).upper():
-                return (None, gr.update(), "Invalid JD.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Job Description.", gr.update(interactive=False))
+                return (None, gr.update(), "Invalid JD.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Job Description.")
 
             resume_summary, job_summary = r_summary, j_summary
             chat_histories = {}
             print("Session Success.")
         except Exception as e:
-            return (None, gr.update(), f"Error: {e}", None, None, "", chat_histories, interview_step, None, None, "", f"### ❌ {e}", gr.update(interactive=False))
+            return (None, gr.update(), f"Error: {e}", None, None, "", chat_histories, interview_step, None, None, "", f"### ❌ {e}")
             
     # 2. Process Answer
     if interview_step > 0 and user_audio_path and latest_question_text:
@@ -348,9 +343,9 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
 
             return (conclusion_audio, gr.update(value="✅ Complete", interactive=False), 
                     eval_data['text_evaluation'], radar, bar, eval_data.get('correction_needed', ''),
-                    chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete!", gr.update(interactive=False))
+                    chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete!")
         except Exception as e:
-            return (None, gr.update(), f"Evaluation error: {e}", None, None, "", chat_histories, interview_step, resume_summary, job_summary, "", "### ❌ Evaluation Failed.", gr.update(interactive=False))
+            return (None, gr.update(), f"Evaluation error: {e}", None, None, "", chat_histories, interview_step, resume_summary, job_summary, "", "### ❌ Evaluation Failed.")
 
     # 4. Generate Next Question
     try:
@@ -358,7 +353,7 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         question = Interviewer(chat_histories, resume_summary or "Candidate", job_summary or "Role")
         
         if "Error:" in question:
-            return (None, gr.update(), question, None, None, "", chat_histories, interview_step, resume_summary, job_summary, question, f"### 🧔 HR Coach: \n⚠️ {question}", gr.update(interactive=False))
+            return (None, gr.update(), question, None, None, "", chat_histories, interview_step, resume_summary, job_summary, question, f"### 🧔 HR Coach: \n⚠️ {question}")
 
         audio_file = text_to_speech(question)
         button_label = f"Submit Answer & Next ({interview_step + 1}/{int(num_q)})"
@@ -366,10 +361,10 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         
         return (audio_file, gr.update(value=button_label, interactive=True), 
                 "Evaluation will appear at the end.", None, None, "",
-                chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md, gr.update(interactive=True))
+                chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md)
     except Exception as e:
         err = f"Generation error: {e}"
-        return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}", gr.update(interactive=False))
+        return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}")
 
 # --- Global Data for Viewer Count ---
 VISITOR_SESSIONS = set()
@@ -388,95 +383,40 @@ def get_image_base64(image_path):
     """Convert an image file to a base64 string for embedding in HTML."""
     try:
         if not os.path.exists(image_path):
-            print(f"Error: File not found: {image_path}")
+            print(f"❌ File not found: {image_path}")
             return ""
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
             return f"data:image/png;base64,{encoded_string}"
     except Exception as e:
-        print(f"Error: Error encoding image {image_path}: {e}")
+        print(f"❌ Error encoding image {image_path}: {e}")
         return ""
 
 custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
 
-// --- PWA Service Worker Registration ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('✅ Service Worker Registered!', reg))
-        .catch(err => console.error('❌ Service Worker Error', err));
-    });
-}
-
-// --- Dynamic Countdown Timer Logic ---
-window.totalInterviewSeconds = 600; // Default 10 mins (5 questions * 2 mins)
-window.timerRemaining = 600;
-window.timerInstance = null;
-window.isTimerRunning = false;
-
-window.updateTimerDisplay = function() {
-    const mins = Math.floor(window.timerRemaining / 60);
-    const secs = window.timerRemaining % 60;
-    const display = document.getElementById('interview-timer-display');
-    if (display) {
-        display.innerText = `⏳ ${window.isTimerRunning ? 'Countdown' : 'Est. Time'}: ${mins}m ${secs.toString().padStart(2, '0')}s`;
-        if (window.timerRemaining <= 60 && window.isTimerRunning) {
-            display.style.color = "#ff4b4b"; // Warning color
-            display.style.background = "rgba(255, 75, 75, 0.1)";
-        } else {
-            display.style.color = "#92fe9d";
-            display.style.background = "rgba(0, 210, 255, 0.05)";
-        }
-    }
-};
-
 window.startInterviewTimer = function() {
-    console.log("⏱️ Timer Event: Start/Resume");
-    if (window.timerInstance) clearInterval(window.timerInstance);
-    window.isTimerRunning = true;
-    
-    window.timerInstance = setInterval(() => {
-        if (window.timerRemaining > 0) {
-            window.timerRemaining--;
-            window.updateTimerDisplay();
-        } else {
-            clearInterval(window.timerInstance);
-            window.isTimerRunning = false;
-        }
-    }, 1000);
+    console.log("⏱️ Interview started...");
 };
 
-window.pauseInterviewTimer = function() {
-    console.log("⏸️ Timer Event: Pause");
-    clearInterval(window.timerInstance);
-    window.isTimerRunning = false;
-    window.updateTimerDisplay();
-};
+// Splash handling is now primarily driven by CSS for robustness
+window.addEventListener('load', () => {
+    console.log("Page fully loaded.");
+    const splash = document.getElementById('splash-overlay');
+    const main = document.getElementById('main-app-content');
+    if (splash) splash.classList.add('hide-splash');
+    if (main) main.classList.add('show-main');
+});
 
-window.syncInitialTime = function(qCount) {
-    window.totalInterviewSeconds = qCount * 120; // 2 mins per question
-    window.timerRemaining = window.totalInterviewSeconds;
-    window.updateTimerDisplay();
-};
-
-// Robust Splash Screen Hider
-(function() {
-    const hideSplash = () => {
-        const splash = document.getElementById('splash-overlay');
-        if (splash) {
-            console.log("🚀 Hiding splash screen...");
-            splash.style.opacity = '0';
-            splash.style.pointerEvents = 'none';
-            setTimeout(() => { 
-                splash.style.display = 'none'; 
-                console.log("✅ Splash removed.");
-            }, 800);
-        }
-    };
-    setTimeout(hideSplash, 1800);
-    window.addEventListener('load', hideSplash);
-})();
+// Fallback for safety
+setTimeout(() => {
+    const splash = document.getElementById('splash-overlay');
+    const main = document.getElementById('main-app-content');
+    if (splash && !splash.classList.contains('hide-splash')) {
+        splash.classList.add('hide-splash');
+        if (main) main.classList.add('show-main');
+    }
+}, 4000);
 
 window.toggleFeedback = function() {
     const p = document.getElementById('feedback-panel');
@@ -522,11 +462,6 @@ setInterval(() => {
             hr.onmouseleave = () => { if(speech) speech.style.opacity = '0'; };
             hr.dataset.rdy = "true";
         }
-        
-        // Ensure timer is properly displayed even on dynamic loads
-        if (!document.getElementById('interview-timer-display')?.innerText.includes(':')) {
-            window.updateTimerDisplay();
-        }
     } catch(e) {}
 }, 2000);
 """
@@ -538,14 +473,16 @@ custom_css = """
     top: 0; left: 0; width: 100%; height: 100%;
     background: #020202;
     display: flex; flex-direction: column; justify-content: center; align-items: center;
-    z-index: 999999 !important;
-    transition: opacity 0.8s ease, visibility 0.8s ease;
-    /* Fail-safe: even if JS fails, fade out after 5s */
-    animation: auto-fade 0.8s 5s forwards;
+    z-index: 999999;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 1s ease, visibility 1s ease;
+    pointer-events: none;
 }
 
-@keyframes auto-fade {
-    to { opacity: 0; visibility: hidden; pointer-events: none; }
+#splash-overlay.hide-splash {
+    opacity: 0;
+    visibility: hidden;
 }
 
 #splash-logo {
@@ -567,6 +504,12 @@ custom_css = """
 #main-app-content {
     display: block !important;
     padding-top: 10px !important;
+    opacity: 0;
+    transition: opacity 1s ease;
+}
+
+#main-app-content.show-main {
+    opacity: 1 !important;
 }
 
 /* Header Spacing */
@@ -969,19 +912,19 @@ manifest_json = f"""
 manifest_b64 = base64.b64encode(manifest_json.encode('utf-8')).decode('utf-8')
 manifest_data_uri = f"data:application/json;charset=utf-8;base64,{manifest_b64}"
 
-custom_head = """
-<link rel="manifest" href="/manifest.json">
+custom_head = f"""
+<link rel="manifest" href="{manifest_data_uri}">
 <meta name="theme-color" content="#050505">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI Coach">
-<link rel="apple-touch-icon" href="/logo.png">
+<link rel="apple-touch-icon" href="{logo_base64}">
 <script>
-""" + custom_js + """
+{custom_js}
 </script>
 """
 
-with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head, title="AI Interview Coach") as demo:
+with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo:
     chat_histories_state = gr.State({})
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
@@ -1029,12 +972,12 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head, title="
                 job_desc_input = gr.Textbox(label="💼 Job Description", lines=10, placeholder="Paste the job requirements here...")
                 with gr.Row():
                     num_q_input = gr.Slider(label="❓ Questions", minimum=1, maximum=10, value=5, step=1)
-                    timer_display = gr.HTML("<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: 10m 00s</div>")
+                    timer_display = gr.HTML("<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: 10 mins</div>")
                 
                 # Dynamic update of estimated time based on question count slider
                 def update_est(val):
-                    return f"<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: {val * 2}m 00s</div>"
-                num_q_input.change(fn=update_est, inputs=num_q_input, outputs=timer_display, js=f"function(val) {{ if(window.syncInitialTime) window.syncInitialTime(val); return `⏳ Est. Time: ${{val*2}}m 00s`; }}")
+                    return f"<div id='interview-timer-display' style='font-size: 1.1rem; font-weight: bold; color: #92fe9d; margin-top: 30px; text-align: center; background: rgba(0,210,255,0.05); padding: 10px; border-radius: 10px; border: 1px solid rgba(0,210,255,0.2);'>⏳ Est. Time: {val * 2} mins</div>"
+                num_q_input.change(fn=update_est, inputs=num_q_input, outputs=timer_display)
 
                 start_btn = gr.Button("🚀 Start Interview", variant="primary", scale=2, elem_id="start-interview-btn")
             
@@ -1042,7 +985,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head, title="
                 question_display = gr.Markdown("", elem_id="question-display")
                 interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, autoplay=True)
                 dummy_mic_status = gr.Textbox(visible=False, elem_id="dummy-mic-status")
-                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer", interactive=False)
+                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
@@ -1106,7 +1049,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head, title="
     start_btn.click(
         fn=next_question,
         inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, question_display, user_answer]
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, question_display]
     )
 
     user_answer.start_recording(
@@ -1116,52 +1059,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head, title="
         js="function() { if(window.startInterviewTimer) { window.startInterviewTimer(); } return []; }"
     )
     
-    # Pause timer when recording stops or file is uploaded
-    user_answer.stop_recording(
-        fn=lambda: "stopped",
-        inputs=[],
-        outputs=[dummy_mic_status],
-        js="function() { if(window.pauseInterviewTimer) { window.pauseInterviewTimer(); } return []; }"
-    )
-    
-    user_answer.upload(
-        fn=lambda: "uploaded",
-        inputs=[],
-        outputs=[dummy_mic_status],
-        js="function() { if(window.pauseInterviewTimer) { window.pauseInterviewTimer(); } return []; }"
-    )
-    
-# 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
-
-# --- FastAPI Implementation for PWA ---
-app = FastAPI()
-
-@app.get("/sw.js")
-async def sw():
-    return FileResponse("sw.js", media_type="application/javascript")
-
-@app.get("/manifest.json")
-async def get_manifest():
-    return FileResponse("manifest.json", media_type="application/json")
-
-@app.get("/logo.png")
-async def get_logo():
-    return FileResponse("logo.png", media_type="image/png")
-
-@app.get("/hr_guy.png")
-async def get_hr():
-    return FileResponse("hr_guy.png", media_type="image/png")
-
-# Optional health check
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-# Mount the Gradio app
-app = gr.mount_gradio_app(app, demo, path="/")
+    # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
-    # Remove share=True as it can cause 404/Tunnel issues on Hugging Face
-    # Use standard uvicorn to ensure FastAPI routes work properly
-    print("🚀 Starting AI Interview Coach with PWA Support...")
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    demo.launch(show_error=True)
