@@ -1,0 +1,11 @@
+venv/
+.venv/
+__pycache__/
+.git/
+.env
+.idea/
+.vscode/
+temp_voice.mp3
+*.wav
+*.pdf
+*.docx
