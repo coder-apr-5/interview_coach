@@ -291,7 +291,8 @@ def text_to_speech(text):
         return None
 
 def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
-    print(f"\n🚀 [EVENT] Button Clicked - Current Step: {interview_step}")
+    print(f"\n[EVENT] Button Clicked - Current Step: {interview_step}")
+    chat_histories = chat_histories or {}
     
     # Robust path resolution
     resume_path = resolve_path(resume_pdf)
@@ -919,7 +920,7 @@ custom_head = f"""
 """
 
 with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo:
-    chat_histories_state = gr.State({})
+    chat_histories_state = gr.State()
     interview_step_state = gr.State(0)
     resume_summary_state = gr.State(None)
     job_summary_state = gr.State(None)
