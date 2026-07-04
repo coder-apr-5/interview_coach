@@ -2,7 +2,7 @@
 title: Interview_Coach
 app_file: app.py
 sdk: gradio
-sdk_version: 5.20.0
+sdk_version: 5.27.0
 ---
 # 🧔 AI Interview Coach: Next-Gen Career Preparation
 
