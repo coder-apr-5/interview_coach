@@ -1,7 +1,8 @@
 gTTS
 faster-whisper
 PyPDF2
-gradio>=5.15.0
+gradio>=5.27.0
 python-dotenv
 groq
 plotly
+pydantic<2.10.0
