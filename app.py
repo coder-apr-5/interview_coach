@@ -1057,4 +1057,5 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
-    demo.queue().launch(server_name="0.0.0.0", server_port=7860, show_error=True)
+    port = int(os.environ.get("PORT", 7860))
+    demo.queue().launch(server_name="0.0.0.0", server_port=port, show_error=True)
