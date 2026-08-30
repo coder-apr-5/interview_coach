@@ -1,9 +1,11 @@
 ---
-title: Interview_Coach
-app_file: app.py
-sdk: gradio
-sdk_version: 5.27.0
-python_version: 3.10
+title: AI Interview Coach
+emoji: 🎙️
+colorFrom: cyan
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
 ---
 # 🧔 AI Interview Coach: Next-Gen Career Preparation
 

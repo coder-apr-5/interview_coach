@@ -15,7 +15,7 @@ def test_groq():
     try:
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": "Hello"}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
         )
         print("Groq OK:", chat_completion.choices[0].message.content)
     except Exception as e:

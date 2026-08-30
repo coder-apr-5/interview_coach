@@ -58,7 +58,7 @@ def chat_with_llm(role, content, json_mode=False):
         try:
             chat_completion = client.chat.completions.create(
                 messages=messages,
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 response_format=response_format
             )
             res = chat_completion.choices[0].message.content
@@ -1057,4 +1057,4 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
 if __name__ == "__main__":
-    demo.launch(show_error=True)
+    demo.queue().launch(server_name="0.0.0.0", server_port=7860, show_error=True)
