@@ -15,6 +15,8 @@ import time
 import gradio as gr
 import os
 from dotenv import load_dotenv
+from fastapi import FastAPI, Response
+from fastapi.responses import FileResponse
 
 load_dotenv()
 
@@ -171,24 +173,34 @@ def Interviewer(chat_histories, resume_summary, job_summary, current_step=1, tot
 
 def Evaluator(chat_histories, job_summary):
     prompt = f"""
-    Based on the following interview history and job requirements, provide a professional evaluation.
-    Format your response purely in Markdown. Use these specific color spans for categorization:
-    - For Strengths: <span style='color: #92fe9d; font-weight: bold;'>[STRENGTH]</span>
-    - For Weaknesses: <span style='color: #ff4b4b; font-weight: bold;'>[WEAKNESS]</span>
-    - For Areas to Improve/Not Ready: <span style='color: #ffcc00; font-weight: bold;'>[NOT READY YET]</span>
+    You are a strict, objective Senior HR Evaluator. Evaluate the candidate's actual responses provided in the Interview History below against the Job Requirements.
     
-    Structure the report with clear headings, bullet points, and ample white space.
-    Return a JSON object with these keys: 
-    1. "text_evaluation": The full formatted Markdown report.
-    2. "correction_needed": A detailed and comprehensive list of specific improvement points and fixes (as a JSON array of strings).
-    3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
-    4. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
-    5. "benchmarks": {{"Communication": y, "Technical Skills": y, "Problem Solving": y, "Confidence": y, "Cultural Fit": y}}
-    
-    GUIDELINE: Benchmarks should represent a high-performing (Top 10%) professional for the role. These values should typically range between 75 and 90 to provide a realistic challenge and standard.
+    CRITICAL SCORING RULES:
+    1. Score EACH metric strictly based ONLY on what the candidate actually answered in the Interview History:
+       - 0 to 30 (Poor/Failed): Empty/missing answer, completely incorrect technical facts, or no effort.
+       - 31 to 50 (Weak): Superficial/vague answer, missing key technical concepts, low confidence.
+       - 51 to 70 (Average/Fair): Correct basics, but lacks architectural depth or structured examples.
+       - 71 to 85 (Good): Thorough, accurate, articulate, and well-reasoned answers.
+       - 86 to 100 (Exceptional): Top-tier expert answers with deep system design & trade-off mastery.
+       
+    2. DO NOT BE OVERLY POLITE OR INFLATE SCORES. If the candidate gave weak, brief, missing, or incorrect responses, their scores MUST be low (e.g. 20 to 55).
+    3. The numerical scores MUST match the Strengths, Weaknesses, and Verdict in your text evaluation.
 
-    Interview History: {chat_histories}
-    Job Summary: {job_summary}
+    Return a JSON object with these exact keys: 
+    1. "text_evaluation": The full formatted Markdown report. Use these specific color spans for categorization:
+       - For Strengths: <span style='color: #92fe9d; font-weight: bold;'>[STRENGTH]</span>
+       - For Weaknesses: <span style='color: #ff4b4b; font-weight: bold;'>[WEAKNESS]</span>
+       - For Areas to Improve/Not Ready: <span style='color: #ffcc00; font-weight: bold;'>[NOT READY YET]</span>
+    2. "correction_needed": A detailed list of specific improvement points and fixes (as a JSON array of strings).
+    3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
+    4. "scores": {{"Communication": score, "Technical Skills": score, "Problem Solving": score, "Confidence": score, "Cultural Fit": score}} 
+    5. "benchmarks": {{"Communication": 80, "Technical Skills": 85, "Problem Solving": 85, "Confidence": 80, "Cultural Fit": 80}}
+
+    Interview History:
+    {json.dumps(chat_histories, indent=2)}
+
+    Job Requirements Summary:
+    {job_summary}
     """
     response_json = chat_with_llm("Senior HR Evaluator. Output JSON.", prompt, json_mode=True)
     try:
@@ -227,8 +239,8 @@ def Evaluator(chat_histories, job_summary):
         return {
             "text_evaluation": "### Evaluation unavailable. \nPlease try again.",
             "correction_needed": "* No data available.",
-            "scores": {"Communication": 70, "Technical Skills": 70, "Problem Solving": 70, "Confidence": 70, "Cultural Fit": 70},
-            "benchmarks": {"Communication": 75, "Technical Skills": 75, "Problem Solving": 75, "Confidence": 75, "Cultural Fit": 75}
+            "scores": {"Communication": 40, "Technical Skills": 40, "Problem Solving": 40, "Confidence": 40, "Cultural Fit": 40},
+            "benchmarks": {"Communication": 80, "Technical Skills": 85, "Problem Solving": 85, "Confidence": 80, "Cultural Fit": 80}
         }
 
 def create_performance_charts(scores, benchmarks=None):
@@ -472,6 +484,19 @@ def get_image_base64(image_path):
 
 custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
+
+// PWA Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+                console.log('✅ PWA Service Worker registered with scope:', registration.scope);
+            })
+            .catch(function(err) {
+                console.error('❌ PWA Service Worker registration failed:', err);
+            });
+    });
+}
 
 window.startInterviewTimer = function() {
     console.log("⏱️ Interview started...");
@@ -960,35 +985,13 @@ logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
 # Dynamic PWA Manifest Generation
-manifest_json = f"""
-{{
-  "name": "AI Interview Coach",
-  "short_name": "AICoach",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
-  "description": "Your Personalized AI Interview Coach",
-  "icons": [
-    {{
-      "src": "{logo_base64}",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }}
-  ]
-}}
-"""
-manifest_b64 = base64.b64encode(manifest_json.encode('utf-8')).decode('utf-8')
-manifest_data_uri = f"data:application/json;charset=utf-8;base64,{manifest_b64}"
-
 custom_head = f"""
-<link rel="manifest" href="{manifest_data_uri}">
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#050505">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI Coach">
-<link rel="apple-touch-icon" href="{logo_base64}">
+<link rel="apple-touch-icon" href="/logo.png">
 <script>
 {custom_js}
 </script>
@@ -1133,6 +1136,82 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
+# --- FastAPI App with Full PWA Routes ---
+app = FastAPI()
+
+@app.get("/manifest.json")
+def get_manifest():
+    manifest_data = {
+        "name": "AI Interview Coach",
+        "short_name": "AICoach",
+        "start_url": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#050505",
+        "theme_color": "#050505",
+        "description": "Your Personalized AI Interview Coach",
+        "icons": [
+            {
+                "src": "/logo.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return Response(content=json.dumps(manifest_data), media_type="application/json")
+
+@app.get("/sw.js")
+def get_sw():
+    sw_code = """
+    const CACHE_NAME = 'ai-coach-v2';
+    const urlsToCache = ['/', '/manifest.json', '/logo.png'];
+
+    self.addEventListener('install', (event) => {
+        self.skipWaiting();
+        event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache).catch(() => {}))
+        );
+    });
+
+    self.addEventListener('activate', (event) => {
+        event.waitUntil(
+            caches.keys().then((cacheNames) => {
+                return Promise.all(
+                    cacheNames.map((cache) => {
+                        if (cache !== CACHE_NAME) {
+                            return caches.delete(cache);
+                        }
+                    })
+                );
+            }).then(() => self.clients.claim())
+        );
+    });
+
+    self.addEventListener('fetch', (event) => {
+        if (event.request.method !== 'GET') return;
+        event.respondWith(
+            fetch(event.request).catch(() => caches.match(event.request))
+        );
+    });
+    """
+    return Response(content=sw_code, media_type="application/javascript")
+
+@app.get("/logo.png")
+def get_pwa_logo():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(base_dir, "logo.png")
+    if os.path.exists(logo_path):
+        return FileResponse(logo_path, media_type="image/png")
+    return Response(content=b"", media_type="image/png")
+
+# Enable Queue on demo Blocks
+demo.queue()
+
+# Mount Gradio app onto FastAPI
+app = gr.mount_gradio_app(app, demo, path="/")
+
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.environ.get("PORT", 7860))
-    demo.queue().launch(server_name="0.0.0.0", server_port=port, show_error=True)
+    uvicorn.run(app, host="0.0.0.0", port=port)
