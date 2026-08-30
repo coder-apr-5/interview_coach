@@ -456,17 +456,47 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, us
         err = f"Generation error: {e}"
         return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}", None, "", hr_persona)
 
-# --- Global Data for Viewer Count ---
-VISITOR_SESSIONS = set()
+# --- Global Unique Viewers Tracking (Device Fingerprinting) ---
+VIEWERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "viewers_data.json")
+
+def load_unique_viewers():
+    try:
+        if os.path.exists(VIEWERS_FILE):
+            with open(VIEWERS_FILE, "r") as f:
+                data = json.load(f)
+                return set(data.get("devices", []))
+    except Exception as e:
+        print(f"Error loading viewers file: {e}")
+    return set()
+
+def save_unique_viewers(viewers_set):
+    try:
+        with open(VIEWERS_FILE, "w") as f:
+            json.dump({"devices": list(viewers_set)}, f)
+    except Exception as e:
+        print(f"Error saving viewers file: {e}")
+
+UNIQUE_VIEWERS = load_unique_viewers()
 
 def get_visitor_count():
-    return f"<div class='visitor-count'>👥 Viewers: {max(1, len(VISITOR_SESSIONS))}</div>"
+    return f"<div class='visitor-count'>👥 Viewers: {max(1, len(UNIQUE_VIEWERS))}</div>"
 
 def track_visitor(request: gr.Request):
-    # This isn't perfect for real-time but works for session tracking in Gradio
     if request:
-        session_id = request.session_hash
-        VISITOR_SESSIONS.add(session_id)
+        # Get Client IP (Render proxy uses x-forwarded-for)
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        if forwarded_for:
+            ip = forwarded_for.split(",")[0].strip()
+        else:
+            ip = getattr(request.client, "host", "127.0.0.1")
+        
+        user_agent = request.headers.get("user-agent", "unknown")
+        device_fingerprint = f"{ip}_{user_agent}"
+        
+        if device_fingerprint not in UNIQUE_VIEWERS:
+            UNIQUE_VIEWERS.add(device_fingerprint)
+            save_unique_viewers(UNIQUE_VIEWERS)
+            
     return get_visitor_count()
 
 def get_image_base64(image_path):
@@ -532,22 +562,32 @@ window.closeFAQ = function() {
     if (faq) faq.style.display = 'none';
 };
 
-window.showAnswer = function(qId) {
+window.toggleAnswer = function(qId) {
     try {
-        const answers = {
-            1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
-            2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
-            3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
-            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
-            5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools)."
-        };
-        const display = document.getElementById('faq-answer-display');
-        if (!display) return;
-        
-        display.innerText = answers[qId];
-        display.style.display = 'block';
-        display.style.opacity = '1';
-    } catch(e) { console.error("FAQ Error:", e); }
+        const targetAns = document.getElementById('faq-answer-' + qId);
+        const targetArrow = document.getElementById('faq-arrow-' + qId);
+        if (!targetAns) return;
+
+        const isCurrentlyOpen = (targetAns.style.display === 'block');
+
+        // Close all answer boxes for clean accordion behavior
+        for (let i = 1; i <= 5; i++) {
+            const ans = document.getElementById('faq-answer-' + i);
+            const arrow = document.getElementById('faq-arrow-' + i);
+            if (ans) {
+                ans.style.display = 'none';
+                ans.style.opacity = '0';
+            }
+            if (arrow) arrow.innerText = '▼';
+        }
+
+        // If it wasn't open, open it now! (If it was open, leaving it closed toggles it off!)
+        if (!isCurrentlyOpen) {
+            targetAns.style.display = 'block';
+            setTimeout(() => { targetAns.style.opacity = '1'; }, 10);
+            if (targetArrow) targetArrow.innerText = '▲';
+        }
+    } catch(e) { console.error("FAQ Toggle Error:", e); }
 };
 
 setInterval(() => {
@@ -668,34 +708,49 @@ custom_css = """
     margin-bottom: 20px;
     font-size: 1.3rem;
 }
+.faq-item {
+    margin-bottom: 10px;
+    width: 100%;
+}
 .faq-btn {
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.08);
     color: #fff;
-    padding: 14px;
+    padding: 12px 16px;
     border-radius: 12px;
-     margin-bottom: 12px;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     text-align: left;
     cursor: pointer;
     transition: all 0.3s;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-sizing: border-box;
 }
 .faq-btn:hover {
     background: #00d2ff;
     color: #000;
-    transform: translateX(8px);
     font-weight: bold;
 }
-#faq-answer-display {
-    margin-top: 15px;
-    font-size: 0.95rem;
+.faq-arrow {
+    font-size: 0.8rem;
+    color: #00d2ff;
+    transition: transform 0.3s;
+}
+.faq-btn:hover .faq-arrow {
+    color: #000;
+}
+.faq-answer-box {
+    margin-top: 8px;
+    font-size: 0.88rem;
     color: #eee;
     background: rgba(0,210,255,0.1);
-    padding: 18px;
-    border-radius: 15px;
-    opacity: 0;
+    padding: 14px 16px;
+    border-radius: 12px;
     display: none;
-    border-left: 6px solid #00d2ff;
+    opacity: 0;
+    border-left: 4px solid #00d2ff;
     line-height: 1.5;
     transition: opacity 0.3s ease;
 }
@@ -1081,12 +1136,31 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
                     <div class="chat-title" style="margin-bottom: 0;">❓ FAQs</div>
                     <button id="close-faq" onclick="closeFAQ()" style="background: none; border: none; color: #00d2ff; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
                 </div>
-                <button class="faq-btn" onclick="showAnswer(1)">❓ How does it work?</button>
-                <button class="faq-btn" onclick="showAnswer(2)">❓ AI Models used?</button>
-                <button class="faq-btn" onclick="showAnswer(3)">❓ Data security?</button>
-                <button class="faq-btn" onclick="showAnswer(4)">❓ Where are results?</button>
-                <button class="faq-btn" onclick="showAnswer(5)">❓ How to write the JD?</button>
-                <div id="faq-answer-display"></div>
+                
+                <div class="faq-item">
+                    <button class="faq-btn" onclick="toggleAnswer(1)"><span>❓ How does it work?</span> <span class="faq-arrow" id="faq-arrow-1">▼</span></button>
+                    <div class="faq-answer-box" id="faq-answer-1">I analyze your resume and job description to create tailored questions that simulate a real interview experience.</div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-btn" onclick="toggleAnswer(2)"><span>❓ AI Models used?</span> <span class="faq-arrow" id="faq-arrow-2">▼</span></button>
+                    <div class="faq-answer-box" id="faq-answer-2">I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.</div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-btn" onclick="toggleAnswer(3)"><span>❓ Data security?</span> <span class="faq-arrow" id="faq-arrow-3">▼</span></button>
+                    <div class="faq-answer-box" id="faq-answer-3">Absolutely. I process your data in real-time and never store your documents or audio on any server.</div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-btn" onclick="toggleAnswer(4)"><span>❓ Where are results?</span> <span class="faq-arrow" id="faq-arrow-4">▼</span></button>
+                    <div class="faq-answer-box" id="faq-answer-4">Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.</div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-btn" onclick="toggleAnswer(5)"><span>❓ How to write the JD?</span> <span class="faq-arrow" id="faq-arrow-5">▼</span></button>
+                    <div class="faq-answer-box" id="faq-answer-5">For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools).</div>
+                </div>
             </div>
             <div id="hr-container" onclick="toggleFAQ()">
                 <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
