@@ -15,8 +15,6 @@ import time
 import gradio as gr
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, Response
-from fastapi.responses import FileResponse
 
 load_dotenv()
 
@@ -171,34 +169,24 @@ def Interviewer(chat_histories, resume_summary, job_summary, current_step=1, tot
 
 def Evaluator(chat_histories, job_summary):
     prompt = f"""
-    You are a strict, objective Senior HR Evaluator. Evaluate the candidate's actual responses provided in the Interview History below against the Job Requirements.
+    Based on the following interview history and job requirements, provide a professional evaluation.
+    Format your response purely in Markdown. Use these specific color spans for categorization:
+    - For Strengths: <span style='color: #92fe9d; font-weight: bold;'>[STRENGTH]</span>
+    - For Weaknesses: <span style='color: #ff4b4b; font-weight: bold;'>[WEAKNESS]</span>
+    - For Areas to Improve/Not Ready: <span style='color: #ffcc00; font-weight: bold;'>[NOT READY YET]</span>
     
-    CRITICAL SCORING RULES:
-    1. Score EACH metric strictly based ONLY on what the candidate actually answered in the Interview History:
-       - 0 to 30 (Poor/Failed): Empty/missing answer, completely incorrect technical facts, or no effort.
-       - 31 to 50 (Weak): Superficial/vague answer, missing key technical concepts, low confidence.
-       - 51 to 70 (Average/Fair): Correct basics, but lacks architectural depth or structured examples.
-       - 71 to 85 (Good): Thorough, accurate, articulate, and well-reasoned answers.
-       - 86 to 100 (Exceptional): Top-tier expert answers with deep system design & trade-off mastery.
-       
-    2. DO NOT BE OVERLY POLITE OR INFLATE SCORES. If the candidate gave weak, brief, missing, or incorrect responses, their scores MUST be low (e.g. 20 to 55).
-    3. The numerical scores MUST match the Strengths, Weaknesses, and Verdict in your text evaluation.
-
-    Return a JSON object with these exact keys: 
-    1. "text_evaluation": The full formatted Markdown report. Use these specific color spans for categorization:
-       - For Strengths: <span style='color: #92fe9d; font-weight: bold;'>[STRENGTH]</span>
-       - For Weaknesses: <span style='color: #ff4b4b; font-weight: bold;'>[WEAKNESS]</span>
-       - For Areas to Improve/Not Ready: <span style='color: #ffcc00; font-weight: bold;'>[NOT READY YET]</span>
-    2. "correction_needed": A detailed list of specific improvement points and fixes (as a JSON array of strings).
+    Structure the report with clear headings, bullet points, and ample white space.
+    Return a JSON object with these keys: 
+    1. "text_evaluation": The full formatted Markdown report.
+    2. "correction_needed": A detailed and comprehensive list of specific improvement points and fixes (as a JSON array of strings).
     3. "spoken_conclusion": A short, 2-3 sentence concluding verbal remark to the candidate summarized from the evaluation. Be professional, direct, and mention if the performance was satisfactory or requires significant work. End with a thank you. No emotions.
-    4. "scores": {{"Communication": score, "Technical Skills": score, "Problem Solving": score, "Confidence": score, "Cultural Fit": score}} 
-    5. "benchmarks": {{"Communication": 80, "Technical Skills": 85, "Problem Solving": 85, "Confidence": 80, "Cultural Fit": 80}}
+    4. "scores": {{"Communication": x, "Technical Skills": x, "Problem Solving": x, "Confidence": x, "Cultural Fit": x}} 
+    5. "benchmarks": {{"Communication": y, "Technical Skills": y, "Problem Solving": y, "Confidence": y, "Cultural Fit": y}}
+    
+    GUIDELINE: Benchmarks should represent a high-performing (Top 10%) professional for the role. These values should typically range between 75 and 90 to provide a realistic challenge and standard.
 
-    Interview History:
-    {json.dumps(chat_histories, indent=2)}
-
-    Job Requirements Summary:
-    {job_summary}
+    Interview History: {chat_histories}
+    Job Summary: {job_summary}
     """
     response_json = chat_with_llm("Senior HR Evaluator. Output JSON.", prompt, json_mode=True)
     try:
@@ -237,8 +225,8 @@ def Evaluator(chat_histories, job_summary):
         return {
             "text_evaluation": "### Evaluation unavailable. \nPlease try again.",
             "correction_needed": "* No data available.",
-            "scores": {"Communication": 40, "Technical Skills": 40, "Problem Solving": 40, "Confidence": 40, "Cultural Fit": 40},
-            "benchmarks": {"Communication": 80, "Technical Skills": 85, "Problem Solving": 85, "Confidence": 80, "Cultural Fit": 80}
+            "scores": {"Communication": 70, "Technical Skills": 70, "Problem Solving": 70, "Confidence": 70, "Cultural Fit": 70},
+            "benchmarks": {"Communication": 75, "Technical Skills": 75, "Problem Solving": 75, "Confidence": 75, "Cultural Fit": 75}
         }
 
 def create_performance_charts(scores, benchmarks=None):
@@ -454,47 +442,17 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, us
         err = f"Generation error: {e}"
         return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}", None, "", hr_persona)
 
-# --- Global Unique Viewers Tracking (Device Fingerprinting) ---
-VIEWERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "viewers_data.json")
-
-def load_unique_viewers():
-    try:
-        if os.path.exists(VIEWERS_FILE):
-            with open(VIEWERS_FILE, "r") as f:
-                data = json.load(f)
-                return set(data.get("devices", []))
-    except Exception as e:
-        print(f"Error loading viewers file: {e}")
-    return set()
-
-def save_unique_viewers(viewers_set):
-    try:
-        with open(VIEWERS_FILE, "w") as f:
-            json.dump({"devices": list(viewers_set)}, f)
-    except Exception as e:
-        print(f"Error saving viewers file: {e}")
-
-UNIQUE_VIEWERS = load_unique_viewers()
+# --- Global Data for Viewer Count ---
+VISITOR_SESSIONS = set()
 
 def get_visitor_count():
-    return f"<div class='visitor-count'>👥 Viewers: {max(1, len(UNIQUE_VIEWERS))}</div>"
+    return f"<div class='visitor-count'>👥 Viewers: {max(1, len(VISITOR_SESSIONS))}</div>"
 
 def track_visitor(request: gr.Request):
+    # This isn't perfect for real-time but works for session tracking in Gradio
     if request:
-        # Get Client IP (Render proxy uses x-forwarded-for)
-        forwarded_for = request.headers.get("x-forwarded-for", "")
-        if forwarded_for:
-            ip = forwarded_for.split(",")[0].strip()
-        else:
-            ip = getattr(request.client, "host", "127.0.0.1")
-        
-        user_agent = request.headers.get("user-agent", "unknown")
-        device_fingerprint = f"{ip}_{user_agent}"
-        
-        if device_fingerprint not in UNIQUE_VIEWERS:
-            UNIQUE_VIEWERS.add(device_fingerprint)
-            save_unique_viewers(UNIQUE_VIEWERS)
-            
+        session_id = request.session_hash
+        VISITOR_SESSIONS.add(session_id)
     return get_visitor_count()
 
 def get_image_base64(image_path):
@@ -512,19 +470,6 @@ def get_image_base64(image_path):
 
 custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
-
-// PWA Service Worker Registration
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js')
-            .then(function(registration) {
-                console.log('✅ PWA Service Worker registered with scope:', registration.scope);
-            })
-            .catch(function(err) {
-                console.error('❌ PWA Service Worker registration failed:', err);
-            });
-    });
-}
 
 window.startInterviewTimer = function() {
     console.log("⏱️ Interview started...");
@@ -560,32 +505,22 @@ window.closeFAQ = function() {
     if (faq) faq.style.display = 'none';
 };
 
-window.toggleAnswer = function(qId) {
+window.showAnswer = function(qId) {
     try {
-        const targetAns = document.getElementById('faq-answer-' + qId);
-        const targetArrow = document.getElementById('faq-arrow-' + qId);
-        if (!targetAns) return;
-
-        const isCurrentlyOpen = (targetAns.style.display === 'block');
-
-        // Close all answer boxes for clean accordion behavior
-        for (let i = 1; i <= 5; i++) {
-            const ans = document.getElementById('faq-answer-' + i);
-            const arrow = document.getElementById('faq-arrow-' + i);
-            if (ans) {
-                ans.style.display = 'none';
-                ans.style.opacity = '0';
-            }
-            if (arrow) arrow.innerText = '▼';
-        }
-
-        // If it wasn't open, open it now! (If it was open, leaving it closed toggles it off!)
-        if (!isCurrentlyOpen) {
-            targetAns.style.display = 'block';
-            setTimeout(() => { targetAns.style.opacity = '1'; }, 10);
-            if (targetArrow) targetArrow.innerText = '▲';
-        }
-    } catch(e) { console.error("FAQ Toggle Error:", e); }
+        const answers = {
+            1: "I analyze your resume and job description to create tailored questions that simulate a real interview experience.",
+            2: "I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.",
+            3: "Absolutely. I process your data in real-time and never store your documents or audio on any server.",
+            4: "Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.",
+            5: "For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools)."
+        };
+        const display = document.getElementById('faq-answer-display');
+        if (!display) return;
+        
+        display.innerText = answers[qId];
+        display.style.display = 'block';
+        display.style.opacity = '1';
+    } catch(e) { console.error("FAQ Error:", e); }
 };
 
 setInterval(() => {
@@ -706,49 +641,34 @@ custom_css = """
     margin-bottom: 20px;
     font-size: 1.3rem;
 }
-.faq-item {
-    margin-bottom: 10px;
-    width: 100%;
-}
 .faq-btn {
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.08);
     color: #fff;
-    padding: 12px 16px;
+    padding: 14px;
     border-radius: 12px;
-    font-size: 0.92rem;
+     margin-bottom: 12px;
+    font-size: 0.95rem;
     text-align: left;
     cursor: pointer;
     transition: all 0.3s;
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-sizing: border-box;
 }
 .faq-btn:hover {
     background: #00d2ff;
     color: #000;
+    transform: translateX(8px);
     font-weight: bold;
 }
-.faq-arrow {
-    font-size: 0.8rem;
-    color: #00d2ff;
-    transition: transform 0.3s;
-}
-.faq-btn:hover .faq-arrow {
-    color: #000;
-}
-.faq-answer-box {
-    margin-top: 8px;
-    font-size: 0.88rem;
+#faq-answer-display {
+    margin-top: 15px;
+    font-size: 0.95rem;
     color: #eee;
     background: rgba(0,210,255,0.1);
-    padding: 14px 16px;
-    border-radius: 12px;
-    display: none;
+    padding: 18px;
+    border-radius: 15px;
     opacity: 0;
-    border-left: 4px solid #00d2ff;
+    display: none;
+    border-left: 6px solid #00d2ff;
     line-height: 1.5;
     transition: opacity 0.3s ease;
 }
@@ -1038,13 +958,35 @@ logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
 # Dynamic PWA Manifest Generation
+manifest_json = f"""
+{{
+  "name": "AI Interview Coach",
+  "short_name": "AICoach",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "description": "Your Personalized AI Interview Coach",
+  "icons": [
+    {{
+      "src": "{logo_base64}",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }}
+  ]
+}}
+"""
+manifest_b64 = base64.b64encode(manifest_json.encode('utf-8')).decode('utf-8')
+manifest_data_uri = f"data:application/json;charset=utf-8;base64,{manifest_b64}"
+
 custom_head = f"""
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="{manifest_data_uri}">
 <meta name="theme-color" content="#050505">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI Coach">
-<link rel="apple-touch-icon" href="/logo.png">
+<link rel="apple-touch-icon" href="{logo_base64}">
 <script>
 {custom_js}
 </script>
@@ -1134,31 +1076,12 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
                     <div class="chat-title" style="margin-bottom: 0;">❓ FAQs</div>
                     <button id="close-faq" onclick="closeFAQ()" style="background: none; border: none; color: #00d2ff; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
                 </div>
-                
-                <div class="faq-item">
-                    <button class="faq-btn" onclick="toggleAnswer(1)"><span>❓ How does it work?</span> <span class="faq-arrow" id="faq-arrow-1">▼</span></button>
-                    <div class="faq-answer-box" id="faq-answer-1">I analyze your resume and job description to create tailored questions that simulate a real interview experience.</div>
-                </div>
-
-                <div class="faq-item">
-                    <button class="faq-btn" onclick="toggleAnswer(2)"><span>❓ AI Models used?</span> <span class="faq-arrow" id="faq-arrow-2">▼</span></button>
-                    <div class="faq-answer-box" id="faq-answer-2">I use Groq-powered LLaMA 3.3 for intelligence and Faster-Whisper for high-speed voice recognition.</div>
-                </div>
-
-                <div class="faq-item">
-                    <button class="faq-btn" onclick="toggleAnswer(3)"><span>❓ Data security?</span> <span class="faq-arrow" id="faq-arrow-3">▼</span></button>
-                    <div class="faq-answer-box" id="faq-answer-3">Absolutely. I process your data in real-time and never store your documents or audio on any server.</div>
-                </div>
-
-                <div class="faq-item">
-                    <button class="faq-btn" onclick="toggleAnswer(4)"><span>❓ Where are results?</span> <span class="faq-arrow" id="faq-arrow-4">▼</span></button>
-                    <div class="faq-answer-box" id="faq-answer-4">Complete the interview (all questions) and then check the 'Analytics' tab for your detailed performance breakdown.</div>
-                </div>
-
-                <div class="faq-item">
-                    <button class="faq-btn" onclick="toggleAnswer(5)"><span>❓ How to write the JD?</span> <span class="faq-arrow" id="faq-arrow-5">▼</span></button>
-                    <div class="faq-answer-box" id="faq-answer-5">For the best experience, provide a clear job description including Job Title, Key Responsibilities, and Required Skills (Technical & Tools).</div>
-                </div>
+                <button class="faq-btn" onclick="showAnswer(1)">❓ How does it work?</button>
+                <button class="faq-btn" onclick="showAnswer(2)">❓ AI Models used?</button>
+                <button class="faq-btn" onclick="showAnswer(3)">❓ Data security?</button>
+                <button class="faq-btn" onclick="showAnswer(4)">❓ Where are results?</button>
+                <button class="faq-btn" onclick="showAnswer(5)">❓ How to write the JD?</button>
+                <div id="faq-answer-display"></div>
             </div>
             <div id="hr-container" onclick="toggleFAQ()">
                 <div id="speech-bubble">Hi, I'm your Personalized Interview Coach</div>
@@ -1208,82 +1131,5 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
 
-# --- FastAPI App with Full PWA Routes ---
-app = FastAPI()
-
-@app.get("/manifest.json")
-def get_manifest():
-    manifest_data = {
-        "name": "AI Interview Coach",
-        "short_name": "AICoach",
-        "start_url": "/",
-        "display": "standalone",
-        "orientation": "portrait",
-        "background_color": "#050505",
-        "theme_color": "#050505",
-        "description": "Your Personalized AI Interview Coach",
-        "icons": [
-            {
-                "src": "/logo.png",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable"
-            }
-        ]
-    }
-    return Response(content=json.dumps(manifest_data), media_type="application/json")
-
-@app.get("/sw.js")
-def get_sw():
-    sw_code = """
-    const CACHE_NAME = 'ai-coach-v2';
-    const urlsToCache = ['/', '/manifest.json', '/logo.png'];
-
-    self.addEventListener('install', (event) => {
-        self.skipWaiting();
-        event.waitUntil(
-            caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache).catch(() => {}))
-        );
-    });
-
-    self.addEventListener('activate', (event) => {
-        event.waitUntil(
-            caches.keys().then((cacheNames) => {
-                return Promise.all(
-                    cacheNames.map((cache) => {
-                        if (cache !== CACHE_NAME) {
-                            return caches.delete(cache);
-                        }
-                    })
-                );
-            }).then(() => self.clients.claim())
-        );
-    });
-
-    self.addEventListener('fetch', (event) => {
-        if (event.request.method !== 'GET') return;
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
-        );
-    });
-    """
-    return Response(content=sw_code, media_type="application/javascript")
-
-@app.get("/logo.png")
-def get_pwa_logo():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    logo_path = os.path.join(base_dir, "logo.png")
-    if os.path.exists(logo_path):
-        return FileResponse(logo_path, media_type="image/png")
-    return Response(content=b"", media_type="image/png")
-
-# Enable Queue on demo Blocks
-demo.queue()
-
-# Mount Gradio app onto FastAPI
-app = gr.mount_gradio_app(app, demo, path="/")
-
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    demo.queue().launch(server_name="0.0.0.0", server_port=7860, show_error=True)
