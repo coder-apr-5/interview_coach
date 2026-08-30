@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 import json
 import re
 import base64
+import random
 
 from groq import Groq
 
@@ -17,6 +18,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# --- HR Personas (Shuffled each session with matching male/female neural voices) ---
+HR_PERSONAS = [
+    {"name": "Alex Carter", "gender": "male", "voice": "en-US-ChristopherNeural", "title": "Senior AI HR Consultant"},
+    {"name": "Sarah Jenkins", "gender": "female", "voice": "en-US-JennyNeural", "title": "Head of Talent Acquisition"},
+    {"name": "David Miller", "gender": "male", "voice": "en-US-GuyNeural", "title": "Lead Technical Recruiter"},
+    {"name": "Emily Watson", "gender": "female", "voice": "en-US-AriaNeural", "title": "Senior People & Culture Lead"},
+    {"name": "Michael Vance", "gender": "male", "voice": "en-GB-RyanNeural", "title": "Executive Hiring Manager"},
+    {"name": "Jessica Taylor", "gender": "female", "voice": "en-GB-SoniaNeural", "title": "Principal Talent Partner"},
+    {"name": "Daniel Brooks", "gender": "male", "voice": "en-US-EricNeural", "title": "Engineering Recruitment Director"},
+    {"name": "Sophia Martinez", "gender": "female", "voice": "en-US-AvaNeural", "title": "Global Hiring Consultant"},
+    {"name": "Marcus Reed", "gender": "male", "voice": "en-AU-WilliamNeural", "title": "Technical Talent Strategist"},
+    {"name": "Rachel Adams", "gender": "female", "voice": "en-AU-NatashaNeural", "title": "Senior Technical Recruiter"}
+]
+
 # --- Lazy LLM initialization ---
 llm_client = None
 
@@ -24,8 +39,8 @@ def get_llm():
     """Returns the initialized Groq client."""
     global llm_client
     if llm_client: return llm_client
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key: raise RuntimeError("GROQ_API_KEY is missing! Please configure the API Key in Hugging Face Secrets.")
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not api_key: raise RuntimeError("❌ GROQ_API_KEY is missing! Please configure the GROQ_API_KEY environment variable in your host settings (e.g., Render Environment Variables or .env file).")
     llm_client = Groq(api_key=api_key)
     return llm_client
 
@@ -105,31 +120,50 @@ def Job_Description_Expert(job_desc):
     response = chat_with_llm("Job Requirement Gatekeeper", prompt)
     return response.strip()
 
-def Interviewer(chat_histories, resume_summary, job_summary):
-    if not chat_histories:
+def Interviewer(chat_histories, resume_summary, job_summary, current_step=1, total_q=5, hr_persona=None):
+    chat_histories = chat_histories or {}
+    q_count = len(chat_histories) + 1
+    
+    persona = hr_persona if (hr_persona and isinstance(hr_persona, dict)) else HR_PERSONAS[0]
+    hr_name = persona.get("name", "Alex Carter")
+    hr_title = persona.get("title", "AI HR Consultant")
+    
+    if q_count == 1:
+        role = f"{hr_name} ({hr_title} - Opening Session)"
         prompt = f"""
         Context:
         Resume Summary: {resume_summary}
         Job Requirements: {job_summary}
+        Total Questions: {total_q}
         
         Task:
-        Introduce yourself as an AI HR Consultant. Based on the candidate's resume and the job requirements, ask a strong, relevant FIRST question to start the interview.
-        Keep it professional, warm, and engaging. ONE question only.
+        Introduce yourself warmly as {hr_name}, a {hr_title}. Based on the candidate's resume and job requirements, ask a strong, relevant FIRST question to start the interview (e.g., asking them to introduce themselves and walk through a key project from their resume).
+        Keep it professional, concise, and engaging. Ask ONE question only.
         """
-        role = "Professional HR Interviewer (Opening Session)"
     else:
+        role = f"{hr_name} (Question {q_count} of {total_q})"
         prompt = f"""
         Context:
         Resume: {resume_summary}
         Job: {job_summary}
-        History: {chat_histories}
+        Previous Interview Q&A History:
+        {json.dumps(chat_histories, indent=2)}
         
-        Task:
-        Based on the interview history and the candidate's profile, ask ONE insightful follow-up question. 
-        Deep dive into their previous answers or probe a specific skill mentioned in their resume.
-        Keep it conversational and professional. ONE question only.
+        Current Question Number: {q_count} of {total_q}
+        
+        CRITICAL RULES:
+        1. DO NOT re-introduce yourself or repeat greetings like "Hello, I'm {hr_name}...". You are already in the middle of the interview.
+        2. DO NOT repeat any question previously asked in the History.
+        3. Transition naturally from their previous response in 1 short sentence, then ask a NEW question on a DIFFERENT topic.
+        
+        Topic Roadmap by Question Number:
+        - Question 2: Technical Deep Dive (Core programming concepts, frameworks, or tools listed in job & resume)
+        - Question 3: Problem Solving & Debugging (Handling tricky bugs, edge cases, or performance trade-offs)
+        - Question 4: Behavioral & Teamwork (Handling conflict, tight deadlines, or feedback using STAR method)
+        - Question 5+: System Architecture, Security, Scalability, or Scenario Analysis
+        
+        Ask ONE clear, direct question for Question #{q_count}.
         """
-        role = "Professional HR Interviewer (Follow-up Session)"
     
     return chat_with_llm(role, prompt)
 
@@ -273,24 +307,38 @@ def transcribe_audio_faster_whisper(audio_path):
         print(f"Transcription error: {e}")
         return ""
 
-def text_to_speech(text):
+def text_to_speech(text, voice_name="en-US-ChristopherNeural"):
     import time
     import tempfile
+    import asyncio
+    
+    temp_dir = tempfile.gettempdir()
+    output_path = os.path.join(temp_dir, f"voice_{int(time.time()*1000)}.mp3")
+    
+    # 1. Try high-quality Neural edge-tts voice matching HR gender
     try:
-        print(f"Generating TTS for: {text[:50]}...")
+        import edge_tts
+        print(f"Generating Edge-TTS ({voice_name}) for: {text[:50]}...")
+        asyncio.run(edge_tts.Communicate(text, voice_name).save(output_path))
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return output_path
+    except Exception as e:
+        print(f"Edge-TTS failed ({e}), falling back to gTTS...")
+
+    # 2. Fallback to gTTS if edge-tts fails
+    try:
+        print(f"Generating gTTS fallback for: {text[:50]}...")
         tts = gTTS(text=text, lang='en')
-        
-        temp_dir = tempfile.gettempdir()
-        output_path = os.path.join(temp_dir, f"voice_{int(time.time()*1000)}.mp3")
         tts.save(output_path)
         return output_path
     except Exception as e:
         print(f"TTS Error: {e}")
         return None
 
-def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, chat_histories, interview_step, resume_summary, job_summary, latest_question_text):
+def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, user_text_ans, chat_histories, interview_step, resume_summary, job_summary, latest_question_text, hr_persona):
     print(f"\n[EVENT] Button Clicked - Current Step: {interview_step}")
     chat_histories = chat_histories or {}
+    num_q_val = int(num_q)
     
     # Robust path resolution
     resume_path = resolve_path(resume_pdf)
@@ -301,11 +349,11 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
         print("Initializing session...")
         if not resume_path:
             gr.Warning("⚠️ Please upload your resume PDF.")
-            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Resume missing.", "⚠️ Error: Resume missing.")
+            return (None, gr.update(), "⚠️ Please upload your resume first.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: Resume missing.", "⚠️ Error: Resume missing.", None, "", None)
         
         if not job_desc or len(job_desc.strip()) < 10:
             gr.Warning("⚠️ Please provide a clear Job Description.")
-            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: JD too short.", "⚠️ Error: JD too short.")
+            return (None, gr.update(), "⚠️ Job description is too short.", None, None, gr.update(), chat_histories, interview_step, resume_summary, job_summary, "⚠️ Error: JD too short.", "⚠️ Error: JD too short.", None, "", None)
             
         try:
             resume_text = extract_text_from_pdf(resume_path)
@@ -315,57 +363,84 @@ def next_question(resume_pdf, job_desc, num_q, interviewer_audio, user_audio, ch
             j_summary = Job_Description_Expert(job_desc)
             
             if "INVALID" in str(r_summary).upper():
-                return (None, gr.update(), "Invalid Resume.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Resume PDF.")
+                return (None, gr.update(), "Invalid Resume.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Resume PDF.", None, "", None)
             if "INVALID" in str(j_summary).upper():
-                return (None, gr.update(), "Invalid JD.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Job Description.")
+                return (None, gr.update(), "Invalid JD.", None, None, "", chat_histories, interview_step, None, None, "", "### ⚠️ Invalid Job Description.", None, "", None)
+
+            # Randomly shuffle and select a fresh HR Persona for each new interview!
+            hr_persona = random.choice(HR_PERSONAS)
+            print(f"Selected HR Persona: {hr_persona['name']} ({hr_persona['gender']}, voice: {hr_persona['voice']})")
 
             resume_summary, job_summary = r_summary, j_summary
             chat_histories = {}
             print("Session Success.")
         except Exception as e:
-            return (None, gr.update(), f"Error: {e}", None, None, "", chat_histories, interview_step, None, None, "", f"### ❌ {e}")
+            return (None, gr.update(), f"Error: {e}", None, None, "", chat_histories, interview_step, None, None, "", f"### ❌ {e}", None, "", None)
             
-    # 2. Process Answer
-    if interview_step > 0 and user_audio_path and latest_question_text:
-        try:
-            answer_text = transcribe_audio_faster_whisper(user_audio_path)
-            if answer_text.strip():
-                chat_histories[latest_question_text] = answer_text
-        except Exception as e:
-            print(f"Voice error: {e}")
+    # Ensure hr_persona is populated
+    if not hr_persona or not isinstance(hr_persona, dict):
+        hr_persona = random.choice(HR_PERSONAS)
+
+    # 2. Process Answer from Previous Question (if step > 0)
+    if interview_step > 0 and latest_question_text:
+        answer_text = ""
+        # Check text input first
+        if user_text_ans and str(user_text_ans).strip():
+            answer_text = str(user_text_ans).strip()
+        # Fallback/Combine with audio transcription if available
+        if user_audio_path:
+            try:
+                transcribed = transcribe_audio_faster_whisper(user_audio_path)
+                if transcribed.strip():
+                    if answer_text:
+                        answer_text = f"{answer_text} (Voice: {transcribed.strip()})"
+                    else:
+                        answer_text = transcribed.strip()
+            except Exception as e:
+                print(f"Voice transcription error: {e}")
+        
+        # If no transcript or text provided, supply fallback so chat_histories advances
+        if not answer_text:
+            answer_text = "[Candidate submitted response]"
+            
+        chat_histories[latest_question_text] = answer_text
+        print(f"Recorded answer for Q{interview_step}: {answer_text[:60]}...")
     
     # 3. Check for Completion
-    if interview_step >= int(num_q) and interview_step > 0:
+    if interview_step >= num_q_val and interview_step > 0:
         gr.Info("Generating final evaluation...")
         try:
             eval_data = Evaluator(chat_histories, job_summary)
             radar, bar = create_performance_charts(eval_data['scores'], eval_data['benchmarks'])
-            conclusion_audio = text_to_speech(eval_data.get('spoken_conclusion', 'Thank you.'))
+            voice_name = hr_persona.get("voice", "en-US-ChristopherNeural")
+            conclusion_audio = text_to_speech(eval_data.get('spoken_conclusion', 'Thank you.'), voice_name=voice_name)
 
             return (conclusion_audio, gr.update(value="✅ Complete", interactive=False), 
                     eval_data['text_evaluation'], radar, bar, eval_data.get('correction_needed', ''),
-                    chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete!")
+                    chat_histories, interview_step + 1, resume_summary, job_summary, "", "### 🏁 Interview Complete!", None, "", hr_persona)
         except Exception as e:
-            return (None, gr.update(), f"Evaluation error: {e}", None, None, "", chat_histories, interview_step, resume_summary, job_summary, "", "### ❌ Evaluation Failed.")
+            return (None, gr.update(), f"Evaluation error: {e}", None, None, "", chat_histories, interview_step, resume_summary, job_summary, "", "### ❌ Evaluation Failed.", None, "", hr_persona)
 
     # 4. Generate Next Question
     try:
-        print(f"Generating Question {interview_step + 1}...")
-        question = Interviewer(chat_histories, resume_summary or "Candidate", job_summary or "Role")
+        print(f"Generating Question {interview_step + 1} of {num_q_val}...")
+        question = Interviewer(chat_histories, resume_summary or "Candidate", job_summary or "Role", current_step=interview_step+1, total_q=num_q_val, hr_persona=hr_persona)
         
+        hr_name = hr_persona.get("name", "HR Coach")
         if "Error:" in question:
-            return (None, gr.update(), question, None, None, "", chat_histories, interview_step, resume_summary, job_summary, question, f"### 🧔 HR Coach: \n⚠️ {question}")
+            return (None, gr.update(), question, None, None, "", chat_histories, interview_step, resume_summary, job_summary, question, f"### 🧔 {hr_name}: \n⚠️ {question}", None, "", hr_persona)
 
-        audio_file = text_to_speech(question)
-        button_label = f"Submit Answer & Next ({interview_step + 1}/{int(num_q)})"
-        q_md = f"### 🧔 HR Coach:\n{question}"
+        voice_name = hr_persona.get("voice", "en-US-ChristopherNeural")
+        audio_file = text_to_speech(question, voice_name=voice_name)
+        button_label = f"Submit Answer & Next ({interview_step + 1}/{num_q_val})"
+        q_md = f"### 🧔 {hr_name}:\n{question}"
         
         return (audio_file, gr.update(value=button_label, interactive=True), 
-                "Evaluation will appear at the end.", None, None, "",
-                chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md)
+                "Evaluation will appear at the end of the interview.", None, None, "",
+                chat_histories, interview_step + 1, resume_summary, job_summary, question, q_md, None, "", hr_persona)
     except Exception as e:
         err = f"Generation error: {e}"
-        return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}")
+        return (None, gr.update(), err, None, None, "", chat_histories, interview_step, resume_summary, job_summary, err, f"### ❌ {err}", None, "", hr_persona)
 
 # --- Global Data for Viewer Count ---
 VISITOR_SESSIONS = set()
@@ -923,6 +998,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     resume_summary_state = gr.State(None)
     job_summary_state = gr.State(None)
     latest_question_text_state = gr.State("")
+    hr_persona_state = gr.State(None)
     # 1. Non-blocking Splash Transition
     gr.HTML(f"""
         <div id="splash-overlay">
@@ -978,7 +1054,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
                 question_display = gr.Markdown("", elem_id="question-display")
                 interviewer_question = gr.Audio(label="🧔 Interviewer Speaks:", type="filepath", interactive=False, autoplay=True)
                 dummy_mic_status = gr.Textbox(visible=False, elem_id="dummy-mic-status")
-                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer")
+                user_answer = gr.Audio(sources=["microphone"], type="filepath", label="🎙️ Your Answer (Voice)")
+                user_text_answer = gr.Textbox(label="✍️ Or Type Your Answer (Text Fallback)", lines=3, placeholder="If mic is off, silent, or disabled, type your answer here...")
                 
         # Separation for Evaluation and Analytics with explicit class for spacing
         with gr.Tabs(elem_classes="tabs-container") as tabs:
@@ -1041,8 +1118,8 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
 
     start_btn.click(
         fn=next_question,
-        inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state],
-        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, question_display]
+        inputs=[resume_input, job_desc_input, num_q_input, interviewer_question, user_answer, user_text_answer, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, hr_persona_state],
+        outputs=[interviewer_question, start_btn, evaluation_textbox, radar_plot, bar_plot, correction_md, chat_histories_state, interview_step_state, resume_summary_state, job_summary_state, latest_question_text_state, question_display, user_answer, user_text_answer, hr_persona_state]
     )
 
     user_answer.start_recording(
