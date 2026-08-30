@@ -73,7 +73,7 @@ def chat_with_llm(role, content, json_mode=False):
         try:
             chat_completion = client.chat.completions.create(
                 messages=messages,
-                model="openai/gpt-oss-120b",
+                model="openai/gpt-oss-20b",
                 response_format=response_format
             )
             res = chat_completion.choices[0].message.content
