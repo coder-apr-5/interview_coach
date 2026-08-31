@@ -15,6 +15,8 @@ import time
 import gradio as gr
 import os
 from dotenv import load_dotenv
+from fastapi import Response
+from fastapi.responses import FileResponse
 
 load_dotenv()
 
@@ -472,6 +474,19 @@ def get_image_base64(image_path):
 
 custom_js = """
 console.log("🚀 AI Coach UI Logic Initializing...");
+
+// PWA Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+                console.log('✅ PWA Service Worker registered with scope:', registration.scope);
+            })
+            .catch(function(err) {
+                console.error('❌ PWA Service Worker registration failed:', err);
+            });
+    });
+}
 
 window.startInterviewTimer = function() {
     console.log("⏱️ Interview started...");
@@ -960,35 +975,13 @@ logo_base64 = get_image_base64(logo_file)
 hr_base64 = get_image_base64(hr_file)
 
 # Dynamic PWA Manifest Generation
-manifest_json = f"""
-{{
-  "name": "AI Interview Coach",
-  "short_name": "AICoach",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
-  "description": "Your Personalized AI Interview Coach",
-  "icons": [
-    {{
-      "src": "{logo_base64}",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }}
-  ]
-}}
-"""
-manifest_b64 = base64.b64encode(manifest_json.encode('utf-8')).decode('utf-8')
-manifest_data_uri = f"data:application/json;charset=utf-8;base64,{manifest_b64}"
-
 custom_head = f"""
-<link rel="manifest" href="{manifest_data_uri}">
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#050505">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="AI Coach">
-<link rel="apple-touch-icon" href="{logo_base64}">
+<link rel="apple-touch-icon" href="/logo.png">
 <script>
 {custom_js}
 </script>
@@ -1132,6 +1125,73 @@ with gr.Blocks(theme=gr.themes.Soft(), css=custom_css, head=custom_head) as demo
     )
     
     # 6. Final cleanup (HTML script injection removed because we use 'head' arg in blocks now)
+
+# --- PWA Internal Route Injection on Gradio's native App ---
+@demo.app.get("/manifest.json")
+def get_manifest():
+    manifest_data = {
+        "name": "AI Interview Coach",
+        "short_name": "AICoach",
+        "start_url": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#050505",
+        "theme_color": "#050505",
+        "description": "Your Personalized AI Interview Coach",
+        "icons": [
+            {
+                "src": "/logo.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return Response(content=json.dumps(manifest_data), media_type="application/json")
+
+@demo.app.get("/sw.js")
+def get_sw():
+    sw_code = """
+    const CACHE_NAME = 'ai-coach-v3';
+    const urlsToCache = ['/', '/manifest.json', '/logo.png'];
+
+    self.addEventListener('install', (event) => {
+        self.skipWaiting();
+        event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache).catch(() => {}))
+        );
+    });
+
+    self.addEventListener('activate', (event) => {
+        event.waitUntil(
+            caches.keys().then((cacheNames) => {
+                return Promise.all(
+                    cacheNames.map((cache) => {
+                        if (cache !== CACHE_NAME) {
+                            return caches.delete(cache);
+                        }
+                    })
+                );
+            }).then(() => self.clients.claim())
+        );
+    });
+
+    self.addEventListener('fetch', (event) => {
+        if (event.request.method !== 'GET') return;
+        event.respondWith(
+            fetch(event.request).catch(() => caches.match(event.request))
+        );
+    });
+    """
+    return Response(content=sw_code, media_type="application/javascript")
+
+@demo.app.get("/logo.png")
+def get_pwa_logo():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_path = os.path.join(base_dir, "logo.png")
+    if os.path.exists(logo_path):
+        return FileResponse(logo_path, media_type="image/png")
+    return Response(content=b"", media_type="image/png")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
